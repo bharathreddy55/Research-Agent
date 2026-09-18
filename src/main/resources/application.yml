@@ -1,0 +1,44 @@
+server:
+  port: ${PORT:8085}
+
+spring:
+  application:
+    name: research-agent
+  main:
+    banner-mode: console
+
+research-agent:
+  llm:
+    provider: ${LLM_PROVIDER:gemini} # 'gemini' or 'openai'
+    gemini:
+      api-key: ${GEMINI_API_KEY:}
+      model-name: ${GEMINI_MODEL:gemini-1.5-flash}
+      temperature: 0.2
+    openai:
+      api-key: ${OPENAI_API_KEY:}
+      model-name: ${OPENAI_MODEL:gpt-4o-mini}
+      temperature: 0.2
+  search:
+    provider: ${SEARCH_PROVIDER:tavily} # 'tavily' or 'fallback'
+    tavily-api-key: ${TAVILY_API_KEY:}
+    timeout-seconds: 15
+  limits:
+    default-budget-cap-paise: 1500 # 1500 paise = ₹15
+    max-reflection-passes: 1
+    depth:
+      quick:
+        max-pages: 6
+        max-sub-questions: 3
+      standard:
+        max-pages: 10
+        max-sub-questions: 4
+      deep:
+        max-pages: 15
+        max-sub-questions: 5
+  reports:
+    output-dir: ./reports
+
+logging:
+  level:
+    com.researchagent: INFO
+    org.springframework: WARN

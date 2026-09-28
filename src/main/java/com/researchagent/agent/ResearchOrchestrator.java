@@ -77,10 +77,26 @@ public class ResearchOrchestrator {
         return token != null && token.get();
     }
 
+    /**
+     * Overload for the async worker path: accepts a pre-assigned {@code runId}
+     * (from the RabbitMQ message) so the DB row and the orchestrator's internal
+     * state use the same identifier.
+     */
+    public Run executeRun(String runId, String query, ResearchDepth depth, long budgetCapPaise, RunEventListener listener) {
+        AtomicBoolean cancellationToken = new AtomicBoolean(false);
+        cancellationTokens.put(runId, cancellationToken);
+        return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+    }
+
     public Run executeRun(String query, ResearchDepth depth, long budgetCapPaise, RunEventListener listener) {
         String runId = UUID.randomUUID().toString();
         AtomicBoolean cancellationToken = new AtomicBoolean(false);
         cancellationTokens.put(runId, cancellationToken);
+        return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+    }
+
+    private Run executeRunInternal(String runId, String query, ResearchDepth depth, long budgetCapPaise,
+                                   RunEventListener listener, AtomicBoolean cancellationToken) {
 
         Run run = Run.builder()
                 .id(runId)

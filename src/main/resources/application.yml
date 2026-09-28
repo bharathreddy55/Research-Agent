@@ -7,6 +7,45 @@ spring:
   main:
     banner-mode: console
 
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:research_agent}}
+    username: ${DB_USER:researcher}
+    password: ${DB_PASS:research_secret}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      connection-timeout: 3000
+      maximum-pool-size: 10
+
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASS:guest}
+    listener:
+      simple:
+        retry:
+          enabled: true
+          max-attempts: 3
+          initial-interval: 1000ms
+          multiplier: 2.0
+          max-interval: 10000ms
+        default-requeue-rejected: false
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2000ms
+
 research-agent:
   llm:
     provider: ${LLM_PROVIDER:gemini} # 'gemini' or 'openai'
@@ -24,6 +63,7 @@ research-agent:
     timeout-seconds: 15
   limits:
     default-budget-cap-paise: 1500 # 1500 paise = ₹15
+    global-daily-spend-cap-paise: 50000 # 50,000 paise = ₹500
     max-reflection-passes: 1
     depth:
       quick:
@@ -42,3 +82,4 @@ logging:
   level:
     com.researchagent: INFO
     org.springframework: WARN
+    org.hibernate.SQL: WARN

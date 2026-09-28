@@ -1,3 +1,21 @@
+# 🚨 START HERE: Read PROJECT_GUIDE.md First
+
+> **This is the single most important file for understanding the entire project.** Before reading any other documentation, open `PROJECT_GUIDE.md` — it contains the complete project architecture, system design, security guardrails, current sprint status, roadmap, and everything you need to know about ResearchAgent without reading all the individual source files.
+
+---
+
+## 📚 Documentation Navigation
+
+| Document | Purpose | When to Read |
+|----------|---------|--------------|
+| **[`PROJECT_GUIDE.md`](PROJECT_GUIDE.md)** | **Complete project overview, architecture, security, roadmap, and everything you need** | **⭐ FIRST — Always read this first** |
+| [`README.md`](README.md) | Project quick start and architecture summary | Quick overview |
+| [`Sprints.md`](Sprints.md) | Detailed sprint-by-sprint development breakdown | Sprint planning and progress tracking |
+| [`docker-compose.yml`](docker-compose.yml) | Infrastructure configuration | Local development setup |
+| [`pom.xml`](pom.xml) | Dependencies and build configuration | Dependency management |
+
+---
+
 # 🔬 ResearchAgent — "Your AI Research Team, On Demand"
 
 > **One-liner**: Give it a research question; it returns a cited report — researched and authored by an autonomous team of AI agents that plan, search, read, verify, write, reflect, and audit citations.

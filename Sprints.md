@@ -11,10 +11,10 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
 |---|---|---|---|---|
 | **Sprint 1** | Multi-Agent Core Engine & CLI | Weeks 13–14 | ✅ **COMPLETED** | 7-agent loop, SSRF & redirect defense, CitationValidator, Picocli CLI, 16 unit tests |
 | **Sprint 2** | Distributed Architecture & Persistence | Week 15 | ✅ **COMPLETED** | Docker Compose (PG, RabbitMQ, Redis), JPA entities, RabbitMQ worker + DLQ, Redis Pub/Sub event bridge, 39 unit tests |
-| **Sprint 3** | REST API, SSE Streaming & Guardrails | Week 16 | 🟡 **IN PROGRESS** | REST controllers, Redis-to-SSE bridge, cancellation, rate limiting, crash recovery, JWT auth |
-| **Sprint 4** | PDF Generation & Report Export | Week 17 | ⚪ **PLANNED** | OpenHTMLtoPDF engine, styled PDF report with cover page, citations table, confidence appendix |
-| **Sprint 5** | React Web UI & Trace Viewer | Week 18 | ⚪ **PLANNED** | Vite + React + Tailwind frontend, query form, live SSE progress visualizer, trace inspector |
-| **Sprint 6** | Observability, Eval Table & Launch Polish | Week 18+ | ⚪ **PLANNED** | LangFuse tracing, 10-question evaluation benchmark, production Docker Compose, demo polish |
+| **Sprint 3** | REST API, SSE Streaming & Guardrails | Week 16 | ✅ **COMPLETED** | REST controllers, Redis-to-SSE bridge, cancellation, rate limiting, crash recovery, 39 unit tests |
+| **Sprint 4** | PDF Generation & Report Export | Week 17 | ✅ **COMPLETED** | OpenHTMLtoPDF engine, styled PDF report with cover page, citations table, confidence appendix |
+| **Sprint 5** | React Web UI & Trace Viewer | Week 18 | ✅ **COMPLETED** | Vite + React + Tailwind frontend, query form, live SSE progress visualizer, trace inspector |
+| **Sprint 6** | Observability, Eval Table & Launch Polish | Week 18+ | 🟡 **IN PROGRESS** | LangFuse tracing, 10-question evaluation benchmark, production Docker Compose, demo polish |
 
 ---
 

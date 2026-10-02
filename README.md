@@ -1,4 +1,4 @@
-# 🚨 START HERE: Read PROJECT_GUIDE.md First
+# 🚨 START HERE : Read PROJECT_GUIDE.md First
 
 > **This is the single most important file for understanding the entire project.** Before reading any other documentation, open `PROJECT_GUIDE.md` — it contains the complete project architecture, system design, security guardrails, current sprint status, roadmap, and everything you need to know about ResearchAgent without reading all the individual source files.
 

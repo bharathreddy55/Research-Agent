@@ -14,7 +14,7 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
 | **Sprint 3** | REST API, SSE Streaming & Guardrails | Week 16 | ✅ **COMPLETED** | REST controllers, Redis-to-SSE bridge, cancellation, rate limiting, crash recovery, 39 unit tests |
 | **Sprint 4** | PDF Generation & Report Export | Week 17 | ✅ **COMPLETED** | OpenHTMLtoPDF engine, styled PDF report with cover page, citations table, confidence appendix |
 | **Sprint 5** | React Web UI & Trace Viewer | Week 18 | ✅ **COMPLETED** | Vite + React + Tailwind frontend, query form, live SSE progress visualizer, trace inspector |
-| **Sprint 6** | Observability, Eval Table & Launch Polish | Week 18+ | 🟡 **IN PROGRESS** | LangFuse tracing, 10-question evaluation benchmark, production Docker Compose, demo polish |
+| **Sprint 6** | Observability, Eval Table & Launch Polish | Week 18+ | ✅ **COMPLETED** | LangFuse tracing, 10-question evaluation benchmark, production Docker Compose, 40 unit tests |
 
 ---
 

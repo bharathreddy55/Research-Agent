@@ -51,9 +51,11 @@ public class RedisEventPublisher implements RunEventListener {
         this(redisTemplate, objectMapper, null);
     }
 
-    public RedisEventPublisher(StringRedisTemplate redisTemplate,
-                               ObjectMapper objectMapper,
-                               org.springframework.beans.factory.ObjectProvider<com.researchagent.service.RedisSseBridgeService> sseBridgeProvider) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public RedisEventPublisher(
+            @org.springframework.beans.factory.annotation.Autowired(required = false) StringRedisTemplate redisTemplate,
+            ObjectMapper objectMapper,
+            org.springframework.beans.factory.ObjectProvider<com.researchagent.service.RedisSseBridgeService> sseBridgeProvider) {
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.sseBridgeProvider = sseBridgeProvider;

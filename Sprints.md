@@ -83,83 +83,83 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
 
 ---
 
-### ⚪ Sprint 3: REST API, Redis-to-SSE Streaming Bridge, Cancellation & Guardrails
+### ✅ Sprint 3: REST API, Redis-to-SSE Streaming Bridge, Cancellation & Guardrails
 > **Goal**: Expose the Spring Boot REST API, connect the Redis-to-SSE event streaming bridge for live browser updates, implement job cancellation, rate limiting, and worker crash recovery.
 
-- [ ] **REST API Endpoints (PRD §9)**:
-  - [ ] `POST /api/runs`: Create and enqueue research run `{query, depth, budgetCapPaise}` with `@Valid` Bean Validation (Audit B3: query max 500 chars, depth whitelist).
-  - [ ] `GET /api/runs`: List user runs with pagination, date, cost, status.
-  - [ ] `GET /api/runs/{id}`: Detailed run status, timing, tokens, cost.
-  - [ ] `GET /api/runs/{id}/stream`: SSE endpoint streaming live progress events.
-  - [ ] `POST /api/runs/{id}/cancel`: Request cancellation; halts LLM spend immediately.
-  - [ ] `GET /api/runs/{id}/report`: Returns report Markdown, metadata, and draft version comparison (v1 vs v2) (Audit B8).
-  - [ ] `GET /api/runs/{id}/trace`: Returns full step-by-step trace history.
-- [ ] **Redis Pub/Sub to SSE Bridge (Audit A1)**:
-  - [ ] `RedisEventSubscriber`: Listens to Redis channel `run:{runId}:events` and relays events directly to active client `SseEmitter` instances.
-  - [ ] Heartbeat and disconnect handling for SSE connections.
-- [ ] **Guardrails & Resilience**:
-  - [ ] Rate Limiting (PRD F10 & Audit B7): Redis semaphore limiting to 3 concurrent active runs per user.
-  - [ ] Worker Crash Recovery (Audit B5): On worker startup, query database for non-terminal runs (`IN_PROGRESS`), inspect last completed step, and resume execution.
-  - [ ] Security: Basic JWT authentication filter on `/api/**` endpoints (Audit B2).
+- [✅] **REST API Endpoints (PRD §9)**:
+  - [✅] `POST /api/runs`: Create and enqueue research run `{query, depth, budgetCapPaise}` with `@Valid` Bean Validation (Audit B3: query max 500 chars, depth whitelist).
+  - [✅] `GET /api/runs`: List user runs with pagination, date, cost, status.
+  - [✅] `GET /api/runs/{id}`: Detailed run status, timing, tokens, cost.
+  - [✅] `GET /api/runs/{id}/stream`: SSE endpoint streaming live progress events.
+  - [✅] `POST /api/runs/{id}/cancel`: Request cancellation; halts LLM spend immediately.
+  - [✅] `GET /api/runs/{id}/report`: Returns report Markdown, metadata, and draft version comparison (v1 vs v2) (Audit B8).
+  - [✅] `GET /api/runs/{id}/trace`: Returns full step-by-step trace history.
+- [✅] **Redis Pub/Sub to SSE Bridge (Audit A1)**:
+  - [✅] `RedisEventSubscriber`: Listens to Redis channel `run:{runId}:events` and relays events directly to active client `SseEmitter` instances.
+  - [✅] Heartbeat and disconnect handling for SSE connections.
+- [✅] **Guardrails & Resilience**:
+  - [✅] Rate Limiting (PRD F10 & Audit B7): Redis semaphore limiting to 3 concurrent active runs per user.
+  - [✅] Worker Crash Recovery (Audit B5): On worker startup, query database for non-terminal runs (`IN_PROGRESS`), inspect last completed step, and resume execution.
+  - [✅] Security: Basic JWT authentication filter on `/api/**` endpoints (Audit B2).
 
 ---
 
-### ⚪ Sprint 4: Styled PDF Report Generation & Export
+### ✅ Sprint 4: Styled PDF Report Generation & Export
 > **Goal**: Convert verified Markdown reports into professional, publication-quality PDF documents with citations and confidence appendices using OpenHTMLtoPDF.
 
-- [ ] **Markdown-to-HTML Pipeline**:
-  - [ ] Flexmark parser converting GitHub-flavored Markdown to clean XHTML.
-  - [ ] Custom CSS styling: professional typography, margins, callout boxes for Executive Summary, and code block formatting.
-- [ ] **PDF Document Layout**:
-  - [ ] Title / Cover Page: Research query, date, duration, total cost, confidence rating, author watermark.
-  - [ ] Executive Summary Callout Box: 3 key bullet points.
-  - [ ] Core Verified Findings sections.
-  - [ ] Low Confidence & Single-Source Findings appendix.
-  - [ ] Citations Bibliography Table: `[n]`, Title, Domain, URL, Verbatim Supporting Quote.
-- [ ] **Export Service & Endpoint**:
-  - [ ] `PdfReportService`: Thread-safe PDF rendering to disk and byte stream.
-  - [ ] `GET /api/runs/{id}/pdf`: Downloadable PDF report endpoint.
-- [ ] **Failure Handling & Degradation**:
-  - [ ] Partial/degraded reports generated gracefully even if certain sources fail or budget cap halts search early.
+- [✅] **Markdown-to-HTML Pipeline**:
+  - [✅] Flexmark parser converting GitHub-flavored Markdown to clean XHTML.
+  - [✅] Custom CSS styling: professional typography, margins, callout boxes for Executive Summary, and code block formatting.
+- [✅] **PDF Document Layout**:
+  - [✅] Title / Cover Page: Research query, date, duration, total cost, confidence rating, author watermark.
+  - [✅] Executive Summary Callout Box: 3 key bullet points.
+  - [✅] Core Verified Findings sections.
+  - [✅] Low Confidence & Single-Source Findings appendix.
+  - [✅] Citations Bibliography Table: `[n]`, Title, Domain, URL, Verbatim Supporting Quote.
+- [✅] **Export Service & Endpoint**:
+  - [✅] `PdfReportService`: Thread-safe PDF rendering to disk and byte stream.
+  - [✅] `GET /api/runs/{id}/pdf`: Downloadable PDF report endpoint.
+- [✅] **Failure Handling & Degradation**:
+  - [✅] Partial/degraded reports generated gracefully even if certain sources fail or budget cap halts search early.
 
 ---
 
-### ⚪ Sprint 5: React Web UI & Interactive Trace Viewer
+### ✅ Sprint 5: React Web UI & Interactive Trace Viewer
 > **Goal**: Build an intuitive, modern React web application (Vite + Tailwind CSS + Lucide icons) for submitting research queries, viewing real-time agent execution, inspecting traces, and reading reports.
 
-- [ ] **Frontend Scaffolding**:
-  - [ ] React 18+ with Vite, Tailwind CSS, and Lucide React icons in `frontend/`.
-  - [ ] API client service with Axios/fetch and SSE hook (`useEventSource`).
-- [ ] **Query Submission View**:
-  - [ ] Research query input form with depth toggle (`Quick` 2min, `Standard` 5min, `Deep` 10min).
-  - [ ] Budget cap slider (in ₹ / paise).
-  - [ ] Validation feedback.
-- [ ] **Live Agent Execution Dashboard**:
-  - [ ] Real-time active agent indicator (Planner → Searcher → Reader → Verifier → Writer → Reflection Critic → Citation Validator).
-  - [ ] Live streaming log of agent thoughts, discovered sources, and token cost accumulation.
-  - [ ] Cancel Run button.
-- [ ] **Report & Trace Viewer**:
-  - [ ] Rendered Markdown report with styled headers, blockquotes, and interactive `[n]` citation tooltips.
-  - [ ] Confidence Badge (Verified % vs Single-Source %).
-  - [ ] One-click PDF download.
-  - [ ] **Step Trace Inspector**: Expandable step-by-step audit table showing prompt, LLM response, duration, tokens, and cost in paise for every single step.
-- [ ] **Run History**:
-  - [ ] Table of past research runs with status badges, dates, costs, and quick link to view/re-run.
+- [✅] **Frontend Scaffolding**:
+  - [✅] React 18+ with Vite, Tailwind CSS, and Lucide React icons in `frontend/`.
+  - [✅] API client service with Axios/fetch and SSE hook (`useEventSource`).
+- [✅] **Query Submission View**:
+  - [✅] Research query input form with depth toggle (`Quick` 2min, `Standard` 5min, `Deep` 10min).
+  - [✅] Budget cap slider (in ₹ / paise).
+  - [✅] Validation feedback.
+- [✅] **Live Agent Execution Dashboard**:
+  - [✅] Real-time active agent indicator (Planner → Searcher → Reader → Verifier → Writer → Reflection Critic → Citation Validator).
+  - [✅] Live streaming log of agent thoughts, discovered sources, and token cost accumulation.
+  - [✅] Cancel Run button.
+- [✅] **Report & Trace Viewer**:
+  - [✅] Rendered Markdown report with styled headers, blockquotes, and interactive `[n]` citation tooltips.
+  - [✅] Confidence Badge (Verified % vs Single-Source %).
+  - [✅] One-click PDF download.
+  - [✅] **Step Trace Inspector**: Expandable step-by-step audit table showing prompt, LLM response, duration, tokens, and cost in paise for every single step.
+- [✅] **Run History**:
+  - [✅] Table of past research runs with status badges, dates, costs, and quick link to view/re-run.
 
 ---
 
-### ⚪ Sprint 6: Observability (LangFuse), Benchmark Eval Table & Launch Polish
+### ✅ Sprint 6: Observability (LangFuse), Benchmark Eval Table & Launch Polish
 > **Goal**: Integrate LangFuse tracing, run 10-question evaluation benchmark, package Docker Compose for one-click launch, and prepare production launch artifacts.
 
-- [ ] **LangFuse Integration**:
-  - [ ] LangChain4j LangFuse client integration tracing prompts, generations, and token usage to self-hosted/cloud LangFuse instance.
-- [ ] **Evaluation Benchmark & Accuracy Flex (PRD §11 & §15)**:
-  - [ ] Execute 10 fixed diverse research questions across science, tech, economics, and policy.
-  - [ ] Measure end-to-end latency, cost per run (< ₹15 target), citation coverage (> 90%), and verification rate.
-  - [ ] Publish the complete 10-Question Eval Table in `README.md`.
-- [ ] **Containerization & Deployment**:
-  - [ ] Multi-stage Dockerfile for Spring Boot backend and React frontend.
-  - [ ] Full `docker-compose.yml` orchestrating app, PostgreSQL, RabbitMQ, Redis, and LangFuse.
-- [ ] **Launch Checklist**:
-  - [ ] Complete README with architecture diagram, agent loop explanation, cost table, and eval results.
-  - [ ] Demo run recording / video script.
+- [✅] **LangFuse Integration**:
+  - [✅] LangChain4j LangFuse client integration tracing prompts, generations, and token usage to self-hosted/cloud LangFuse instance.
+- [✅] **Evaluation Benchmark & Accuracy Flex (PRD §11 & §15)**:
+  - [✅] Execute 10 fixed diverse research questions across science, tech, economics, and policy.
+  - [✅] Measure end-to-end latency, cost per run (< ₹15 target), citation coverage (> 90%), and verification rate.
+  - [✅] Publish the complete 10-Question Eval Table in `README.md`.
+- [✅] **Containerization & Deployment**:
+  - [✅] Multi-stage Dockerfile for Spring Boot backend and React frontend.
+  - [✅] Full `docker-compose.yml` orchestrating app, PostgreSQL, RabbitMQ, Redis, and LangFuse.
+- [✅] **Launch Checklist**:
+  - [✅] Complete README with architecture diagram, agent loop explanation, cost table, and eval results.
+  - [✅] Demo run recording / video script.

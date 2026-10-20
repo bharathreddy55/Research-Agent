@@ -10,11 +10,14 @@ import com.researchagent.model.RunStatus;
 import com.researchagent.producer.ResearchJobProducer;
 import com.researchagent.repository.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.data.domain.*;
 import org.springframework.data.repository.query.FluentQuery;
 import org.springframework.web.server.ResponseStatusException;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.Instant;
 import java.util.*;
@@ -42,6 +45,14 @@ class RunServiceTest {
         final List<RunEntity> saves = new ArrayList<>();
 
         @Override public Optional<RunEntity> findById(String id) { return Optional.ofNullable(store.get(id)); }
+        @Override public Optional<RunEntity> findByIdAndUserId(String id, String userId) {
+            return findById(id).filter(run -> userId.equals(run.getUserId()));
+        }
+        @Override public Page<RunEntity> findByUserId(String userId, Pageable pageable) {
+            List<RunEntity> owned = store.values().stream().filter(run -> userId.equals(run.getUserId())).toList();
+            int from = (int) Math.min(pageable.getOffset(), owned.size());
+            return new PageImpl<>(owned.subList(from, Math.min(from + pageable.getPageSize(), owned.size())), pageable, owned.size());
+        }
         @Override public <S extends RunEntity> S save(S e) { store.put(e.getId(), e); saves.add(e); return e; }
         @Override public boolean existsById(String id) { return store.containsKey(id); }
         @Override public List<RunEntity> findAll() { return new ArrayList<>(store.values()); }
@@ -242,6 +253,8 @@ class RunServiceTest {
 
     @BeforeEach
     void setUp() {
+        SecurityContextHolder.getContext().setAuthentication(
+                UsernamePasswordAuthenticationToken.authenticated("user-1", null, List.of()));
         createdRuns.clear(); enqueuedJobs.clear(); publishedEvents.clear();
         rateLimitAllow.set(true);
 
@@ -296,7 +309,7 @@ class RunServiceTest {
         rateLimitAllow.set(true);
         CreateRunRequest req = new CreateRunRequest("CRISPR therapeutic advances 2026", "QUICK", 1200);
 
-        RunResponse resp = runService.createAndEnqueueRun(req, "user-1");
+        RunResponse resp = runService.createAndEnqueueRun(req);
 
         assertThat(resp).isNotNull();
         assertThat(resp.getQuery()).isEqualTo("CRISPR therapeutic advances 2026");
@@ -311,7 +324,7 @@ class RunServiceTest {
         rateLimitAllow.set(false);
         CreateRunRequest req = new CreateRunRequest("Quantum key distribution", "DEEP", 2000);
 
-        assertThatThrownBy(() -> runService.createAndEnqueueRun(req, "user-1"))
+        assertThatThrownBy(() -> runService.createAndEnqueueRun(req))
                 .isInstanceOf(ResponseStatusException.class)
                 .hasMessageContaining("Too many concurrent active runs");
     }
@@ -332,6 +345,9 @@ class RunServiceTest {
         v1.setVersion(1); v1.setConfidenceScore(0.7); v1.setCreatedAt(Instant.now());
 
         fakeReportRepo.seed("run-diff", List.of(v2, v1));
+        RunEntity ownedRun = new RunEntity();
+        ownedRun.setId("run-diff"); ownedRun.setUserId("user-1");
+        fakeRunRepo.store.put("run-diff", ownedRun);
 
         ReportResponse report = runService.getReport("run-diff");
 
@@ -345,6 +361,7 @@ class RunServiceTest {
     void shouldCancelRun() {
         RunEntity activeRun = new RunEntity();
         activeRun.setId("run-cancel"); activeRun.setStatus("SEARCHING");
+        activeRun.setUserId("user-1");
         activeRun.setStartedAt(Instant.now());
         fakeRunRepo.store.put("run-cancel", activeRun);
 
@@ -352,5 +369,10 @@ class RunServiceTest {
 
         assertThat(cancelled.getStatus()).isEqualTo("CANCELLED");
         assertThat(publishedEvents).anyMatch(e -> e[0].equals("run-cancel") && e[1].equals("CANCELLED"));
+    }
+
+    @AfterEach
+    void clearIdentity() {
+        SecurityContextHolder.clearContext();
     }
 }

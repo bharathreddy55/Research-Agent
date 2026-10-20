@@ -1,12 +1,16 @@
 package com.researchagent.service;
 
 import com.openhtmltopdf.pdfboxout.PdfRendererBuilder;
+import com.openhtmltopdf.outputdevice.helper.ExternalResourceControlPriority;
 import com.researchagent.dto.ReportResponse;
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.data.MutableDataSet;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Entities;
+import org.jsoup.safety.Cleaner;
+import org.jsoup.safety.Safelist;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -51,6 +55,11 @@ public class PdfReportService {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            // Deny every resource protocol, both before and after URI resolution.
+            builder.useExternalResourceAccessControl((uri, type) -> false,
+                    ExternalResourceControlPriority.RUN_BEFORE_RESOLVING_URI);
+            builder.useExternalResourceAccessControl((uri, type) -> false,
+                    ExternalResourceControlPriority.RUN_AFTER_RESOLVING_URI);
             builder.withHtmlContent(xhtml, null);
             builder.toStream(os);
             builder.run();
@@ -89,9 +98,18 @@ public class PdfReportService {
         com.vladsch.flexmark.util.ast.Node document = flexmarkParser.parse(rawMarkdown);
         String bodyHtml = flexmarkRenderer.render(document);
 
-        // Convert bodyHtml to valid XHTML using Jsoup
+        // Report content is untrusted. Only retain text formatting and citation links.
         Document jsoupDoc = Jsoup.parseBodyFragment(bodyHtml);
-        jsoupDoc.outputSettings().syntax(Document.OutputSettings.Syntax.xml);
+        jsoupDoc.select("script,style,link,iframe,object,embed,svg,math,img,video,audio,source").remove();
+        Safelist formatting = new Safelist()
+                .addTags("p", "br", "hr", "h1", "h2", "h3", "h4", "h5", "h6",
+                        "ul", "ol", "li", "blockquote", "pre", "code", "strong", "em",
+                        "b", "i", "s", "del", "table", "thead", "tbody", "tfoot", "tr", "th", "td", "a")
+                .addAttributes("a", "href", "title")
+                .addProtocols("a", "href", "http", "https", "#")
+                .preserveRelativeLinks(true);
+        jsoupDoc = new Cleaner(formatting).clean(jsoupDoc);
+        jsoupDoc.outputSettings().syntax(Document.OutputSettings.Syntax.xml).escapeMode(Entities.EscapeMode.xhtml);
         String cleanBodyXml = jsoupDoc.body().html();
 
         String dateStr = report.getCreatedAt() != null
@@ -103,7 +121,6 @@ public class PdfReportService {
 
         return """
                 <?xml version="1.0" encoding="UTF-8"?>
-                <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
                 <html xmlns="http://www.w3.org/1999/xhtml">
                 <head>
                     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
@@ -225,9 +242,9 @@ public class PdfReportService {
                         <div class="brand-tag">RESEARCHAGENT • INTELLIGENCE BRIEF</div>
                         <h1 class="report-title">%s</h1>
                         <div class="meta-bar">
-                            <strong>Date:</strong> %s &nbsp;|&nbsp;
-                            <strong>Sources Analyzed:</strong> %d &nbsp;|&nbsp;
-                            <strong>Corroborated Claims:</strong> %d &nbsp;|&nbsp;
+                            <strong>Date:</strong> %s &#160;|&#160;
+                            <strong>Sources Analyzed:</strong> %d &#160;|&#160;
+                            <strong>Corroborated Claims:</strong> %d &#160;|&#160;
                             <strong>Confidence:</strong> <span class="badge %s">%d%% Verified</span>
                         </div>
                     </div>

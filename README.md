@@ -59,6 +59,8 @@ sequenceDiagram
 
 | Guardrail | Enforcement Level | Implementation |
 |---|---|---|
+| **Authentication and ownership** | API and Service | Configured local accounts with BCrypt hashes and session cookies. All run routes require sign-in and check the owner; listing returns only the current user's runs. |
+| **PDF resource isolation** | PDF Renderer | Report markup is sanitized; all external resource loading is denied before and after URI resolution, including HTTP, local files, fonts, stylesheets, and images. |
 | **SSRF DNS Pre-Resolution** | Network Layer | `SafeWebReader`: Pre-resolves IP via InetAddress before HTTP request. Blocks `127.0.0.0/8`, `::1`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.169.254` (cloud metadata), and `fc00::/7` (IPv6 ULA). |
 | **Redirect Bypass Protection** | HTTP Client | `SafeWebReader`: Manual per-hop redirect loop (max 3 hops). Re-validates target IP at every redirect hop to prevent 302 redirect bypass. |
 | **Prompt Injection Defense** | LLM Context | `ReaderAgent`: Wraps untrusted crawled HTML inside `<untrusted_web_content>` XML blocks with explicit system prompt boundary rules. |
@@ -101,7 +103,7 @@ Tested across 10 diverse domains using standard depth settings:
 git clone https://github.com/bharathreddy55/Research-Agent.git
 cd Research-Agent
 
-# Configure API Keys in .env
+# Configure API keys and AUTH_USERS_JSON in .env (see Local sign-in below)
 cp .env.example .env
 
 # Start full stack (PostgreSQL, RabbitMQ, Redis, Backend, Frontend)
@@ -122,6 +124,45 @@ java -jar target/research-agent-1.0.0-SNAPSHOT.jar --query "CRISPR gene editing 
 ```
 
 ---
+
+## LLM failures and explicit demo mode
+
+Select `LLM_PROVIDER=gemini` or `LLM_PROVIDER=openai` and configure that provider's API key. Missing or placeholder credentials and unknown providers stop startup with a configuration error. A failed model request stops the research run with `FAILED`; it never substitutes sample findings or quotations. Provider error details are preserved internally as the exception cause.
+
+For an intentional demo, select `LLM_PROVIDER=mock` (the `local` profile also selects this provider). Demo reports display **DEMO MODE — SYNTHETIC OUTPUT**, generate no factual claims or quotations, and record zero model tokens and model cost. Real API keys are ignored in mock mode. Search and page fetching are separate services and may still access the web in a demo run.
+
+## Local sign-in and private runs
+
+The web server requires `AUTH_USERS_JSON`, a JSON object mapping stable lowercase usernames (letters, numbers, `.`, `_`, `-`, up to 64 characters) to BCrypt password hashes with cost 10–16. There are no built-in credentials, public registration, or password reset endpoints. Account provisioning is an administrator operation; restart the server after changing accounts. Authentication accounts are required only in server mode; CLI mode remains available.
+
+To generate a hash on Windows, run these commands from the project folder in an interactive PowerShell terminal. The password prompt hides input and prints only its hash:
+
+```powershell
+mvn -DskipTests compile
+./scripts/hash-password.ps1
+```
+
+Paste the generated hash into `.env` for Docker Compose, preserving the single quotes around the JSON so dollar signs are not expanded. Replace the placeholder below with the actual hash:
+
+```dotenv
+AUTH_USERS_JSON='{"alice":"PASTE_BCRYPT_HASH_HERE"}'
+AUTH_ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
+AUTH_COOKIE_SECURE=false
+```
+
+For multiple users, add more username/hash entries. For direct Maven/Java server launches, `.env` is not automatically loaded; set the environment variable in the launching terminal instead:
+
+```powershell
+$env:AUTH_USERS_JSON = '{"alice":"PASTE_BCRYPT_HASH_HERE"}'
+```
+
+Open the dashboard and sign in. Sessions use an HttpOnly cookie, expire after 30 minutes of inactivity, and are invalidated on sign-out. Existing live streams close when the session is invalidated or a new sign-in changes its identity. Creation and cancellation require a session CSRF token; the UI obtains it automatically. Live events and PDF downloads use the same session. `X-User-Id` is ignored. Other users' run IDs return 404, and history contains only the signed-in user's runs. Existing runs without a matching authenticated username remain inaccessible; any reassignment must be performed explicitly by the administrator, not inferred from client headers.
+
+For API clients, first GET `/api/auth/csrf` while retaining cookies, POST URL-encoded `username` and `password` to `/api/auth/login` with the returned token in its `headerName`, then GET `/api/auth/csrf` again because login rotates the session/token. Send the cookie on all subsequent API requests and the current CSRF header on POST requests. POST `/api/auth/logout` with that header to sign out. Unauthenticated reads return 401; missing/invalid CSRF tokens return 403.
+
+Set `AUTH_ALLOWED_ORIGINS` to the exact frontend origins you serve. Use HTTPS and `AUTH_COOKIE_SECURE=true` when deploying. Host the dashboard and API on the same site for SameSite=Lax cookies; a different-site deployment requires a separate cookie policy. The default browser API origin is `http://localhost:8085`; set `VITE_API_ORIGIN` in `frontend/.env.local` before a local build to change it. Sessions currently live in one backend instance's memory: restarting requires sign-in again, and multiple instances need sticky sessions or a shared session store.
+
+PDFs preserve headings, lists, tables, code, and HTTP/HTTPS citation links. Report images, embedded media, and user-supplied styles are removed; the renderer cannot load remote or local resources. Citation links remain clickable and are not fetched during rendering.
 
 ## 📄 License
 MIT License — free for educational and commercial development.

@@ -17,6 +17,8 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
 
 @Service
 public class LlmService {
@@ -28,7 +30,6 @@ public class LlmService {
     private final String openAiApiKey;
     private final String openAiModel;
     private final double temperature;
-    private final CostTracker costTracker;
 
     private ChatLanguageModel chatModel;
 
@@ -40,47 +41,64 @@ public class LlmService {
             @Value("${research-agent.llm.openai.model-name:gpt-4o-mini}") String openAiModel,
             @Value("${research-agent.llm.gemini.temperature:0.2}") double temperature,
             CostTracker costTracker) {
-        this.provider = provider;
+        this.provider = provider == null ? "" : provider.trim().toLowerCase(Locale.ROOT);
         this.geminiApiKey = geminiApiKey;
         this.geminiModel = geminiModel;
         this.openAiApiKey = openAiApiKey;
         this.openAiModel = openAiModel;
         this.temperature = temperature;
-        this.costTracker = costTracker;
         initModel();
     }
 
     private void initModel() {
+        if ("mock".equals(provider)) {
+            log.warn("Explicit mock provider selected: synthetic demo output only; no model API calls will be made.");
+            return;
+        }
+        if (!"openai".equals(provider) && !"gemini".equals(provider)) {
+            throw new LlmException(LlmException.Code.CONFIGURATION, provider,
+                    "Unsupported LLM provider. Set research-agent.llm.provider to gemini, openai, or mock (demo only).");
+        }
+        String apiKey = "openai".equals(provider) ? openAiApiKey : geminiApiKey;
+        String keyVariable = "openai".equals(provider) ? "OPENAI_API_KEY" : "GEMINI_API_KEY";
+        String modelName = getActiveModelName();
+        if (apiKey == null || apiKey.isBlank() || apiKey.toLowerCase(Locale.ROOT).contains("your_")) {
+            throw new LlmException(LlmException.Code.CONFIGURATION, provider,
+                    "LLM provider " + provider + " requires a valid " + keyVariable
+                            + ". Use provider=mock explicitly for demo output.");
+        }
+        if (modelName == null || modelName.isBlank()) {
+            throw new LlmException(LlmException.Code.CONFIGURATION, provider,
+                    "LLM provider " + provider + " requires a nonempty model name.");
+        }
         try {
-            if ("openai".equalsIgnoreCase(provider) && openAiApiKey != null && !openAiApiKey.isBlank() && !openAiApiKey.contains("your_openai")) {
+            if ("openai".equals(provider)) {
                 log.info("Initializing OpenAI Chat Model with model: {}", openAiModel);
                 this.chatModel = OpenAiChatModel.builder()
                         .apiKey(openAiApiKey)
                         .modelName(openAiModel)
                         .temperature(temperature)
                         .build();
-            } else if (geminiApiKey != null && !geminiApiKey.isBlank() && !geminiApiKey.contains("your_gemini")) {
+            } else {
                 log.info("Initializing Google Gemini Chat Model with model: {}", geminiModel);
                 this.chatModel = GoogleAiGeminiChatModel.builder()
                         .apiKey(geminiApiKey)
                         .modelName(geminiModel)
                         .temperature(temperature)
                         .build();
-            } else {
-                log.warn("No active LLM API key provided for provider '{}'. Operating in mock/test mode.", provider);
-                this.chatModel = null;
             }
         } catch (Exception e) {
-            log.error("Failed to initialize ChatLanguageModel: {}", e.getMessage(), e);
-            this.chatModel = null;
+            throw new LlmException(LlmException.Code.INITIALIZATION, provider,
+                    "Could not initialize LLM provider " + provider + ". Check its configuration.", e);
         }
     }
 
     public void setCustomChatModel(ChatLanguageModel customModel) {
-        this.chatModel = customModel;
+        this.chatModel = Objects.requireNonNull(customModel, "customModel must not be null");
     }
 
     public String getActiveModelName() {
+        if ("mock".equals(provider)) return "mock";
         if ("openai".equalsIgnoreCase(provider)) {
             return openAiModel;
         }
@@ -143,12 +161,22 @@ public class LlmService {
         messages.add(UserMessage.from(userPrompt));
 
         if (chatModel == null) {
-            log.info("Mock LLM responding for prompt snippet: {}", userPrompt.length() > 60 ? userPrompt.substring(0, 60) + "..." : userPrompt);
-            return generateMockResponse(systemPrompt, userPrompt);
+            if ("mock".equals(provider)) {
+                return LlmCallResult.builder()
+                        .content(DemoLlmResponses.generate(systemPrompt))
+                        .tokensIn(0).tokensOut(0).costPaise(0).build();
+            }
+            throw new LlmException(LlmException.Code.INITIALIZATION, provider,
+                    "LLM provider " + provider + " is unavailable.");
         }
 
         try {
             Response<AiMessage> response = chatModel.generate(messages);
+            if (response == null || response.content() == null || response.content().text() == null
+                    || response.content().text().isBlank()) {
+                throw new LlmException(LlmException.Code.INVALID_RESPONSE, provider,
+                        "LLM provider " + provider + " returned an empty response.");
+            }
             String outputText = response.content().text();
             TokenUsage usage = response.tokenUsage();
             int tokensIn = usage != null && usage.inputTokenCount() != null ? usage.inputTokenCount() : Math.max(1, (userPrompt.length() + (systemPrompt != null ? systemPrompt.length() : 0)) / 4);
@@ -162,77 +190,12 @@ public class LlmService {
                     .tokensOut(tokensOut)
                     .costPaise(costPaise)
                     .build();
+        } catch (LlmException e) {
+            throw e;
         } catch (Exception e) {
-            log.error("LLM generation failed: {}. Falling back to mock generator.", e.getMessage());
-            return generateMockResponse(systemPrompt, userPrompt);
+            throw new LlmException(LlmException.Code.GENERATION, provider,
+                    "LLM request failed for provider " + provider + ". Research stopped; no synthetic fallback was used.", e);
         }
     }
 
-    private LlmCallResult generateMockResponse(String systemPrompt, String userPrompt) {
-        String mockResponse;
-        if (systemPrompt != null && systemPrompt.contains("PLANNER")) {
-            mockResponse = """
-            {
-              "subQuestions": [
-                "What are the recent breakthroughs in this domain?",
-                "What are the major technical limitations and commercial hurdles?",
-                "Which leading institutions or companies are driving innovation?"
-              ],
-              "searchQueries": [
-                "recent breakthroughs technological state",
-                "key challenges limitations commercial hurdles",
-                "leading companies research institutions advancements"
-              ],
-              "rationale": "Decomposing into state of the art, bottlenecks, and market leaders."
-            }
-            """;
-        } else if (systemPrompt != null && systemPrompt.contains("READER")) {
-            mockResponse = """
-            {
-              "claims": [
-                {
-                  "statement": "Significant technical milestones were verified across multiple lab prototypes.",
-                  "exactQuote": "Prototypes demonstrated verifiable efficiency gains over prior benchmarks."
-                },
-                {
-                  "statement": "Commercial scaling is anticipated to reach mass adoption by 2028.",
-                  "exactQuote": "Industry roadmaps point toward initial commercial deployment within 2-3 years."
-                }
-              ]
-            }
-            """;
-        } else if (systemPrompt != null && systemPrompt.contains("REFLECTION")) {
-            mockResponse = """
-            {
-              "needsRevision": false,
-              "feedback": "The report adequately covers all sub-questions with citations and clear confidence notes."
-            }
-            """;
-        } else {
-            mockResponse = """
-            # Executive Summary
-            - Key finding 1 regarding the research query with confirmed empirical results [1].
-            - Commercial deployment trajectories and supply chain dynamics [2].
-            - Remaining regulatory and technical challenges requiring further validation [1].
-
-            # Key Developments & State of the Art
-            Recent scientific analysis demonstrates accelerated momentum across core benchmarks [1]. Multiple independent assessments highlight significant performance increases under testing conditions.
-
-            # Challenges & Commercial Roadmap
-            Cost reductions and manufacturing yield remain active focus areas [2]. Initial commercial implementations are progressing toward pilot scale.
-
-            # Confidence Appendix & Source Notes
-            Certain pilot timelines remain single-source estimates awaiting third-party corroboration.
-            """;
-        }
-
-        int inEst = (userPrompt.length() + (systemPrompt != null ? systemPrompt.length() : 0)) / 4;
-        int outEst = mockResponse.length() / 4;
-        return LlmCallResult.builder()
-                .content(mockResponse.trim())
-                .tokensIn(inEst)
-                .tokensOut(outEst)
-                .costPaise(CostTracker.calculateCostPaise(inEst, outEst, getActiveModelName()))
-                .build();
-    }
 }

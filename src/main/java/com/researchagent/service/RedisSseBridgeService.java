@@ -14,6 +14,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import jakarta.annotation.PostConstruct;
+import jakarta.servlet.http.HttpSession;
+import com.researchagent.security.SessionStreams;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -62,17 +64,27 @@ public class RedisSseBridgeService implements MessageListener {
      * Registers a new SSE client for a specific runId.
      */
     public SseEmitter registerClient(String runId) {
+        return registerClient(runId, null);
+    }
+
+    public SseEmitter registerClient(String runId, HttpSession session) {
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
+        Runnable detachSession = session == null ? () -> {} : SessionStreams.attach(session, emitter);
         activeEmitters.computeIfAbsent(runId, k -> new CopyOnWriteArrayList<>()).add(emitter);
 
-        emitter.onCompletion(() -> removeEmitter(runId, emitter));
+        // Spring 6.1 has one callback per lifecycle event; combine both cleanups.
+        Runnable cleanup = () -> {
+            removeEmitter(runId, emitter);
+            detachSession.run();
+        };
+        emitter.onCompletion(cleanup);
         emitter.onTimeout(() -> {
             log.debug("SSE timeout for run {}", runId);
-            removeEmitter(runId, emitter);
+            cleanup.run();
         });
         emitter.onError(e -> {
             log.debug("SSE error for run {}: {}", runId, e.getMessage());
-            removeEmitter(runId, emitter);
+            cleanup.run();
         });
 
         // Send initial connection event
@@ -82,7 +94,8 @@ public class RedisSseBridgeService implements MessageListener {
                     .data("{\"runId\":\"" + runId + "\",\"message\":\"Connected to live agent stream\"}"));
         } catch (IOException e) {
             log.warn("Failed to send initial SSE connected event for run {}: {}", runId, e.getMessage());
-            removeEmitter(runId, emitter);
+            cleanup.run();
+            emitter.complete();
         }
 
         log.info("Registered new SSE client for run {} (total active for run: {})",

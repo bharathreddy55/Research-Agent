@@ -7,6 +7,7 @@ import com.researchagent.model.AgentType;
 import com.researchagent.model.RunStatus;
 import com.researchagent.producer.ResearchJobProducer;
 import com.researchagent.repository.*;
+import com.researchagent.security.CurrentUser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
@@ -64,8 +65,8 @@ public class RunService {
      * Enqueues a new research run after rate limit verification.
      */
     @Transactional
-    public RunResponse createAndEnqueueRun(CreateRunRequest request, String userId) {
-        String effectiveUserId = (userId != null && !userId.isBlank()) ? userId : "default-user";
+    public RunResponse createAndEnqueueRun(CreateRunRequest request) {
+        String effectiveUserId = CurrentUser.requireId();
 
         if (!rateLimiterService.allowRun(effectiveUserId)) {
             throw new ResponseStatusException(HttpStatus.TOO_MANY_REQUESTS,
@@ -88,8 +89,7 @@ public class RunService {
      */
     @Transactional(readOnly = true)
     public RunResponse getRun(String runId) {
-        RunEntity entity = runRepository.findById(runId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found with id: " + runId));
+        RunEntity entity = requireOwnedRun(runId);
 
         RunResponse response = mapToRunResponse(entity);
         reportRepository.findTopByRunIdOrderByVersionDesc(runId)
@@ -104,7 +104,7 @@ public class RunService {
     @Transactional(readOnly = true)
     public List<RunResponse> listRuns(int page, int size) {
         Pageable pageable = PageRequest.of(Math.max(0, page), Math.min(100, Math.max(1, size)), Sort.by("startedAt").descending());
-        Page<RunEntity> runPage = runRepository.findAll(pageable);
+        Page<RunEntity> runPage = runRepository.findByUserId(CurrentUser.requireId(), pageable);
         return runPage.stream().map(this::mapToRunResponse).collect(Collectors.toList());
     }
 
@@ -113,8 +113,7 @@ public class RunService {
      */
     @Transactional
     public RunResponse cancelRun(String runId) {
-        RunEntity run = runRepository.findById(runId)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found with id: " + runId));
+        RunEntity run = requireOwnedRun(runId);
 
         if ("COMPLETED".equalsIgnoreCase(run.getStatus()) || "FAILED".equalsIgnoreCase(run.getStatus())) {
             log.info("Run {} already finished with status {}", runId, run.getStatus());
@@ -138,6 +137,7 @@ public class RunService {
      */
     @Transactional(readOnly = true)
     public ReportResponse getReport(String runId) {
+        requireOwnedRun(runId);
         List<ReportEntity> reports = reportRepository.findByRunIdOrderByVersionDesc(runId);
         if (reports.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "No report found for run id: " + runId);
@@ -160,6 +160,7 @@ public class RunService {
      */
     @Transactional(readOnly = true)
     public List<StepResponse> getSteps(String runId) {
+        requireOwnedRun(runId);
         return stepRepository.findByRunIdOrderBySeqAsc(runId).stream()
                 .map(this::mapToStepResponse)
                 .collect(Collectors.toList());
@@ -170,6 +171,7 @@ public class RunService {
      */
     @Transactional(readOnly = true)
     public List<SourceEntity> getSources(String runId) {
+        requireOwnedRun(runId);
         return sourceRepository.findByRunIdOrderBySourceNumberAsc(runId);
     }
 
@@ -178,7 +180,18 @@ public class RunService {
      */
     @Transactional(readOnly = true)
     public List<ClaimEntity> getClaims(String runId) {
+        requireOwnedRun(runId);
         return claimRepository.findByRunId(runId);
+    }
+
+    @Transactional(readOnly = true)
+    public void assertOwnership(String runId) {
+        requireOwnedRun(runId);
+    }
+
+    private RunEntity requireOwnedRun(String runId) {
+        return runRepository.findByIdAndUserId(runId, CurrentUser.requireId())
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found"));
     }
 
     // -------------------------------------------------------------------------

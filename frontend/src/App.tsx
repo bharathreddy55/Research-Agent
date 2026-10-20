@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import './index.css';
 import ReactMarkdown from 'react-markdown';
+import { API_ORIGIN, sessionFetch, login, logout } from './auth';
 
 // -----------------------------------------------------------------------------
 // Interfaces
@@ -96,7 +97,7 @@ const AGENT_ORDER = [
   'CITATION_VALIDATOR',
 ];
 
-const API_BASE = 'http://localhost:8085/api/runs';
+const API_BASE = `${API_ORIGIN}/api/runs`;
 
 // Components
 const MarkdownRenderer = ({ content }: { content: string }) => (
@@ -116,11 +117,10 @@ const MarkdownRenderer = ({ content }: { content: string }) => (
           <blockquote className="border-l-4 border-primary bg-primary/10 pl-4 pr-3 py-2 my-4 italic text-text-muted">{children}</blockquote>
         ),
         code: (props) => {
-          const { children, inline = false } = props;
-          return inline
-            ? <code className="bg-bg-card-hover px-2 py-1 rounded text-sm font-mono">{children}</code>
-            : <pre className="bg-bg-card-hover p-4 rounded-lg overflow-auto my-4 text-sm font-mono">{children}</pre>;
+          const { children } = props;
+          return <code className="bg-bg-card-hover px-2 py-1 rounded text-sm font-mono">{children}</code>;
         },
+        pre: ({ children }) => <pre className="bg-bg-card-hover p-4 rounded-lg overflow-auto my-4 text-sm font-mono">{children}</pre>,
         ul: ({ children }) => <ul className="list-disc pl-6 my-4 space-y-2">{children}</ul>,
         ol: ({ children }) => <ol className="list-decimal pl-6 my-4 space-y-2">{children}</ol>,
         li: ({ children }) => <li className="text-text-main">{children}</li>,
@@ -139,13 +139,13 @@ const MarkdownRenderer = ({ content }: { content: string }) => (
 // API Service Functions
 const runService = {
   listRuns: async (page: number = 0, size: number = 20) => {
-    const res = await fetch(`${API_BASE}?page=${page}&size=${size}`);
+    const res = await sessionFetch(`${API_BASE}?page=${page}&size=${size}`);
     if (!res.ok) throw new Error('Failed to fetch runs');
     return res.json();
   },
 
   createRun: async (query: string, depth: string, budgetCapPaise: number) => {
-    const res = await fetch(API_BASE, {
+    const res = await sessionFetch(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -156,41 +156,42 @@ const runService = {
     });
     if (!res.ok) {
       const err = await res.json();
-      throw new Error(err.message || 'Failed to create run');
+      throw new Error(err.error || err.message || 'Failed to create run');
     }
     return res.json();
   },
 
   getRun: async (runId: string) => {
-    const res = await fetch(`${API_BASE}/${runId}`);
+    const res = await sessionFetch(`${API_BASE}/${runId}`);
     if (!res.ok) throw new Error('Failed to fetch run');
     return res.json();
   },
 
   cancelRun: async (runId: string) => {
-    await fetch(`${API_BASE}/${runId}/cancel`, { method: 'POST' });
+    const res = await sessionFetch(`${API_BASE}/${runId}/cancel`, { method: 'POST' });
+    if (!res.ok) throw new Error('Failed to cancel run');
   },
 
   getReport: async (runId: string) => {
-    const res = await fetch(`${API_BASE}/${runId}/report`);
+    const res = await sessionFetch(`${API_BASE}/${runId}/report`);
     if (!res.ok) throw new Error('Failed to fetch report');
     return res.json();
   },
 
   getSteps: async (runId: string) => {
-    const res = await fetch(`${API_BASE}/${runId}/trace`);
+    const res = await sessionFetch(`${API_BASE}/${runId}/trace`);
     if (!res.ok) throw new Error('Failed to fetch steps');
     return res.json();
   },
 
   getSources: async (runId: string) => {
-    const res = await fetch(`${API_BASE}/${runId}/sources`);
+    const res = await sessionFetch(`${API_BASE}/${runId}/sources`);
     if (!res.ok) throw new Error('Failed to fetch sources');
     return res.json();
   },
 
   getClaims: async (runId: string) => {
-    const res = await fetch(`${API_BASE}/${runId}/claims`);
+    const res = await sessionFetch(`${API_BASE}/${runId}/claims`);
     if (!res.ok) throw new Error('Failed to fetch claims');
     return res.json();
   },
@@ -201,7 +202,7 @@ const useEventSource = (runId: string | null, onMessage: (data: StreamEvent) => 
   useEffect(() => {
     if (!runId) return;
 
-    const eventSource = new EventSource(`${API_BASE}/${runId}/stream`);
+    const eventSource = new EventSource(`${API_BASE}/${runId}/stream`, { withCredentials: true });
 
     eventSource.onmessage = (event) => {
       try {
@@ -242,6 +243,66 @@ const useEventSource = (runId: string | null, onMessage: (data: StreamEvent) => 
 };
 
 export default function App() {
+  const [user, setUser] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    const expired = () => { setUser(null); setError('Your session ended. Please sign in again.'); };
+    window.addEventListener('session-expired', expired);
+    fetch(`${API_ORIGIN}/api/auth/me`, { credentials: 'include', cache: 'no-store' }).then(async (res) => {
+      if (res.ok) {
+        const identity = await res.json();
+        if (active) setUser(identity.username);
+      } else if (res.status !== 401) {
+        throw new Error('Cannot connect to the sign-in service');
+      }
+    }).catch(() => { if (active) setError('Cannot connect to the sign-in service.'); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; window.removeEventListener('session-expired', expired); };
+  }, []);
+
+  if (loading) return <main className="p-8">Loading your session…</main>;
+  if (user) return <>
+    <div className="flex justify-end items-center gap-4 p-3 bg-bg-card">
+      <span>Signed in as {user}</span>
+      <button disabled={busy} onClick={async () => {
+        setBusy(true); setError('');
+        try { await logout(); setUser(null); setPassword(''); }
+        catch (e) { setError(e instanceof Error ? e.message : 'Sign-out failed'); }
+        finally { setBusy(false); }
+      }}>Sign out</button>
+      {error && <span role="alert">{error}</span>}
+    </div>
+    <Dashboard key={user} />
+  </>;
+
+  return <main className="min-h-screen flex items-center justify-center p-6">
+    <form className="bg-bg-card rounded-xl p-8 flex flex-col gap-4 w-full max-w-md" onSubmit={async (event) => {
+      event.preventDefault(); setBusy(true); setError('');
+      try { setUser(await login(username.trim(), password)); setPassword(''); }
+      catch (e) { setError(e instanceof Error ? e.message : 'Sign-in failed'); }
+      finally { setBusy(false); }
+    }}>
+      <h1 className="text-2xl font-bold">Sign in to ResearchAgent</h1>
+      <p>Your research runs are private to your account.</p>
+      <label htmlFor="username">Username</label>
+      <input id="username" autoComplete="username" value={username} required
+        className="p-3 border rounded text-text-main bg-bg-card-hover" onChange={event => setUsername(event.target.value)} />
+      <label htmlFor="password">Password</label>
+      <input id="password" type="password" autoComplete="current-password" value={password} required
+        className="p-3 border rounded text-text-main bg-bg-card-hover" onChange={event => setPassword(event.target.value)} />
+      {error && <p role="alert">{error}</p>}
+      <button type="submit" disabled={busy} className="bg-primary rounded p-3">{busy ? 'Signing in…' : 'Sign in'}</button>
+    </form>
+  </main>;
+}
+
+function Dashboard() {
   // Form State
   const [query, setQuery] = useState('');
   const [depth, setDepth] = useState<'QUICK' | 'STANDARD' | 'DEEP'>('STANDARD');

@@ -23,8 +23,9 @@ spring:
     port: 5672
 
 # Keep LLM in mock mode for all tests
-llm:
-  provider: mock
+research-agent:
+  llm:
+    provider: mock
 
 cost:
   global-daily-cap-paise: 999999999

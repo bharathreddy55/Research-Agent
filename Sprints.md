@@ -100,7 +100,7 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
 - [✅] **Guardrails & Resilience**:
   - [✅] Rate Limiting (PRD F10 & Audit B7): Redis semaphore limiting to 3 concurrent active runs per user.
   - [✅] Worker Crash Recovery (Audit B5): On worker startup, query database for non-terminal runs (`IN_PROGRESS`), inspect last completed step, and resume execution.
-  - [✅] Security: Basic JWT authentication filter on `/api/**` endpoints (Audit B2).
+  - [ ] Security acceptance pending: local BCrypt accounts, session authentication, CSRF, restricted CORS, and per-run ownership implemented on `/api/**`; cross-user and session runtime checks remain to be performed (Audit B2).
 
 ---
 

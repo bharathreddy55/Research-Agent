@@ -56,7 +56,7 @@ class VerifierAgentTest {
         }
         """;
 
-        LlmService stubLlmService = new LlmService("gemini", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker()) {
+        LlmService stubLlmService = new LlmService("mock", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker()) {
             @Override
             public LlmCallResult generate(String systemPrompt, String userPrompt) {
                 return LlmCallResult.builder()
@@ -114,7 +114,7 @@ class VerifierAgentTest {
         }
         """;
 
-        LlmService stubLlmService = new LlmService("gemini", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker()) {
+        LlmService stubLlmService = new LlmService("mock", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker()) {
             @Override
             public LlmCallResult generate(String systemPrompt, String userPrompt) {
                 return LlmCallResult.builder()

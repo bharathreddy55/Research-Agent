@@ -22,7 +22,7 @@ class ResearchOrchestratorTest {
     @Test
     @DisplayName("Should execute complete multi-agent pipeline from query to cited markdown report")
     void shouldExecuteCompleteMultiAgentPipeline() {
-        LlmService llmService = new LlmService("gemini", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker());
+        LlmService llmService = new LlmService("mock", "", "gemini-1.5-flash", "", "", 0.2, new CostTracker());
         ObjectMapper objectMapper = new ObjectMapper();
         CostTracker costTracker = new CostTracker();
 
@@ -65,6 +65,9 @@ class ResearchOrchestratorTest {
         assertThat(run.getStatus()).isEqualTo(RunStatus.COMPLETED);
         assertThat(run.getReport()).isNotNull();
         assertThat(run.getReport().getMarkdownContent()).isNotBlank();
+        assertThat(run.getReport().getMarkdownContent()).contains("DEMO MODE", "SYNTHETIC OUTPUT");
+        assertThat(run.getClaims()).isEmpty();
+        assertThat(run.getCostPaise()).isZero();
         assertThat(run.getSteps()).isNotEmpty();
         assertThat(run.getCostPaise()).isGreaterThanOrEqualTo(0);
 

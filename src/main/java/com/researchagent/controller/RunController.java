@@ -6,6 +6,7 @@ import com.researchagent.entity.SourceEntity;
 import com.researchagent.service.PdfReportService;
 import com.researchagent.service.RedisSseBridgeService;
 import com.researchagent.service.RunService;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
@@ -18,7 +19,6 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/runs")
-@CrossOrigin(origins = "*")
 public class RunController {
 
     private final RunService runService;
@@ -40,9 +40,8 @@ public class RunController {
      */
     @PostMapping
     public ResponseEntity<RunResponse> createRun(
-            @Valid @RequestBody CreateRunRequest request,
-            @RequestHeader(value = "X-User-Id", required = false, defaultValue = "default-user") String userId) {
-        RunResponse response = runService.createAndEnqueueRun(request, userId);
+            @Valid @RequestBody CreateRunRequest request) {
+        RunResponse response = runService.createAndEnqueueRun(request);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
@@ -71,8 +70,9 @@ public class RunController {
      * Server-Sent Events endpoint streaming live agent thought and progress events.
      */
     @GetMapping(value = "/{id}/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter streamRunEvents(@PathVariable String id) {
-        return sseBridgeService.registerClient(id);
+    public SseEmitter streamRunEvents(@PathVariable String id, HttpSession session) {
+        runService.assertOwnership(id);
+        return sseBridgeService.registerClient(id, session);
     }
 
     /**

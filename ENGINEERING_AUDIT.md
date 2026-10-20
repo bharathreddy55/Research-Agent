@@ -141,6 +141,8 @@ The validator only checks whether [n] names a fetched source. It cannot detect a
 
 ### 12. [P1] Confidence can increase when evidence is missing or contradictory
 
+**Resolved on 20 October 2026:** Updated `calculateConfidenceScore` to require non-zero sources and non-zero claims (`0.0` when evidence is missing) and included `contradictionCount` in the denominator (`verified / (verified + unverified + contradictions)`), ensuring zero evidence yields 0.0% confidence and contradictions penalize the corroboration rating.
+
 Evidence: [ResearchOrchestrator.java:221](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/agent/ResearchOrchestrator.java:221), [ResearchOrchestrator.java:290](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/agent/ResearchOrchestrator.java:290).
 
 Zero verified and zero unverified claims produces 0.5 confidence. Contradictions are excluded from the denominator, so two verified claims plus many contradictory claims can still yield 100%. Duplicate extracted statements are counted separately. The local probe completed a run with zero sources and 50% confidence.

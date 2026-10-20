@@ -218,7 +218,8 @@ public class ResearchOrchestrator {
             // ==========================================
             // Finalize Report & Metrics
             // ==========================================
-            double confidenceScore = calculateConfidenceScore(verifiedClaims.size(), unverifiedClaims.size());
+            double confidenceScore = calculateConfidenceScore(
+                    verifiedClaims.size(), unverifiedClaims.size(), contradictoryClaims.size(), sources.size());
             String reportTitle = "Research Brief: " + query;
 
             Path savedMarkdownPath = saveReportToDisk(runId, finalMarkdown);
@@ -287,10 +288,11 @@ public class ResearchOrchestrator {
         }
     }
 
-    private double calculateConfidenceScore(int verifiedCount, int unverifiedCount) {
-        int total = verifiedCount + unverifiedCount;
-        if (total == 0) return 0.5;
-        return (double) verifiedCount / (double) total;
+    private double calculateConfidenceScore(int verifiedCount, int unverifiedCount, int contradictionCount, int totalSources) {
+        if (totalSources == 0) return 0.0;
+        int totalClaims = verifiedCount + unverifiedCount + contradictionCount;
+        if (totalClaims == 0) return 0.0;
+        return (double) verifiedCount / (double) totalClaims;
     }
 
     private Path saveReportToDisk(String runId, String markdown) {

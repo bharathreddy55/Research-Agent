@@ -67,6 +67,7 @@ class ResearchOrchestratorTest {
         assertThat(run.getReport().getMarkdownContent()).isNotBlank();
         assertThat(run.getReport().getMarkdownContent()).contains("DEMO MODE", "SYNTHETIC OUTPUT");
         assertThat(run.getClaims()).isEmpty();
+        assertThat(run.getReport().getConfidenceScore()).isEqualTo(0.0);
         assertThat(run.getCostPaise()).isZero();
         assertThat(run.getSteps()).isNotEmpty();
         assertThat(run.getCostPaise()).isGreaterThanOrEqualTo(0);

@@ -198,16 +198,26 @@ const runService = {
 };
 
 // SSE Hook
-const useEventSource = (runId: string | null, onMessage: (data: StreamEvent) => void, onError: () => void) => {
+const useEventSource = (
+  runId: string | null,
+  active: boolean,
+  onMessage: (data: StreamEvent) => void,
+  onTerminal: (status?: string) => void
+) => {
+  const onMessageRef = useRef(onMessage);
+  const onTerminalRef = useRef(onTerminal);
+  onMessageRef.current = onMessage;
+  onTerminalRef.current = onTerminal;
+
   useEffect(() => {
-    if (!runId) return;
+    if (!runId || !active) return;
 
     const eventSource = new EventSource(`${API_BASE}/${runId}/stream`, { withCredentials: true });
 
     eventSource.onmessage = (event) => {
       try {
         const data: StreamEvent = JSON.parse(event.data);
-        onMessage(data);
+        onMessageRef.current(data);
       } catch (e) {
         console.warn('Could not parse SSE message:', e);
       }
@@ -219,10 +229,10 @@ const useEventSource = (runId: string | null, onMessage: (data: StreamEvent) => 
       eventSource.addEventListener(type, (event: any) => {
         try {
           const data: StreamEvent = JSON.parse(event.data);
-          onMessage(data);
+          onMessageRef.current(data);
 
           if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(type)) {
-            onError();
+            onTerminalRef.current(type);
             eventSource.close();
           }
         } catch (e) {
@@ -232,14 +242,14 @@ const useEventSource = (runId: string | null, onMessage: (data: StreamEvent) => 
     });
 
     eventSource.onerror = () => {
-      onError();
+      onTerminalRef.current();
       eventSource.close();
     };
 
     return () => {
       eventSource.close();
     };
-  }, [runId, onMessage, onError]);
+  }, [runId, active]);
 };
 
 export default function App() {
@@ -337,22 +347,30 @@ function Dashboard() {
     logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [streamLogs]);
 
+  const isTerminal = (status?: string) =>
+    status ? ['COMPLETED', 'FAILED', 'CANCELLED'].includes(status.toUpperCase()) : false;
+
   // SSE Hook
   useEventSource(
     activeRunId,
+    isStreaming,
     (data) => {
       setStreamLogs((prev) => [...prev, data]);
       if (data.agent) setCurrentAgent(data.agent);
 
-      if (['COMPLETED', 'FAILED', 'CANCELLED'].includes(data.status)) {
+      if (isTerminal(data.status)) {
         setIsStreaming(false);
-        runService.getRun(activeRunId!).then(setRunData).catch(console.warn);
+        if (activeRunId) {
+          fetchRunDetails(activeRunId);
+          fetchPastRuns();
+        }
       }
     },
     () => {
       setIsStreaming(false);
       if (activeRunId) {
-        runService.getRun(activeRunId).then(setRunData).catch(console.warn);
+        fetchRunDetails(activeRunId);
+        fetchPastRuns();
       }
     }
   );
@@ -368,7 +386,7 @@ function Dashboard() {
 
   const fetchRunDetails = async (runId: string) => {
     try {
-      const [runRes, reportRes, traceRes, sourceRes, claimRes] = await Promise.all([
+      const [runRes, reportRes, traceRes, sourceRes, claimRes] = await Promise.allSettled([
         runService.getRun(runId),
         runService.getReport(runId),
         runService.getSteps(runId),
@@ -376,11 +394,16 @@ function Dashboard() {
         runService.getClaims(runId),
       ]);
 
-      setRunData(runRes);
-      setReport(reportRes);
-      setTraces(traceRes);
-      setSources(sourceRes);
-      setClaims(claimRes);
+      if (runRes.status === 'fulfilled') {
+        setRunData(runRes.value);
+        if (isTerminal(runRes.value.status)) {
+          setIsStreaming(false);
+        }
+      }
+      setReport(reportRes.status === 'fulfilled' ? reportRes.value : null);
+      setTraces(traceRes.status === 'fulfilled' ? traceRes.value : []);
+      setSources(sourceRes.status === 'fulfilled' ? sourceRes.value : []);
+      setClaims(claimRes.status === 'fulfilled' ? claimRes.value : []);
     } catch (e) {
       console.warn('Error fetching run details:', e);
     }
@@ -401,6 +424,7 @@ function Dashboard() {
       const run = await runService.createRun(query.trim(), depth, budgetCapPaise);
       setActiveRunId(run.id);
       setRunData(run);
+      setIsStreaming(true);
       await fetchPastRuns();
     } catch (err: any) {
       alert(`Network error: ${err.message}`);
@@ -413,7 +437,9 @@ function Dashboard() {
     if (!activeRunId) return;
     try {
       await runService.cancelRun(activeRunId);
+      setIsStreaming(false);
       await fetchRunDetails(activeRunId);
+      await fetchPastRuns();
     } catch (e) {
       console.warn('Cancel failed:', e);
     }
@@ -422,6 +448,12 @@ function Dashboard() {
   const selectPastRun = (runId: string) => {
     setActiveRunId(runId);
     setStreamLogs([]);
+    const past = pastRuns.find((r) => r.id === runId);
+    if (past && !isTerminal(past.status)) {
+      setIsStreaming(true);
+    } else {
+      setIsStreaming(false);
+    }
     fetchRunDetails(runId);
   };
 

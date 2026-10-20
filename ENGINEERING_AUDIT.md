@@ -201,6 +201,8 @@ Each request loads every run, counts active rows, and then separately creates a 
 
 ### 18. [P1] The live dashboard and cancel button never become active
 
+**Resolved on 20 October 2026:** Derived active run streaming state from lifecycle status (`isTerminal`). Form submit now transitions `isStreaming` to `true`, and history selection restores `isStreaming=true` for active in-flight runs, making live console logs, current-step highlighting, and the cancel button responsive as designed.
+
 Evidence: [App.tsx:256](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:256), [App.tsx:485](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:485).
 
 isStreaming starts false and every setter sets it false. Nothing sets it true. The console, current-stage highlighting, and cancel button all depend on it, so the advertised live controls stay hidden even while events arrive.
@@ -211,6 +213,8 @@ isStreaming starts false and every setter sets it false. Nothing sets it true. T
 
 ### 19. [P1] The event connection is recreated on every render and cannot recover missed events
 
+**Resolved on 20 October 2026:** Stabilized `useEventSource` with `useRef` for event handlers (`onMessageRef`, `onTerminalRef`), gating subscription exclusively on `runId` and `active` lifecycle state to prevent connection churn on component renders.
+
 Evidence: [App.tsx:200](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:200), [App.tsx:241](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:241), [App.tsx:280](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:280).
 
 The effect depends on two callbacks passed inline by App. Every state update creates new callback identities and tears down/reopens EventSource. Each event changes state, so the connection churns during normal operation. Errors explicitly close it; the server has neither event IDs nor replay nor an initial run snapshot. Reconnecting after completion can miss the only terminal event.
@@ -220,6 +224,8 @@ The effect depends on two callbacks passed inline by App. Every state update cre
 **Acceptance:** Many incoming events keep one connection alive; a disconnect across completion still delivers the final state.
 
 ### 20. [P1] New reports do not load automatically; partial run reads discard useful results
+
+**Resolved on 20 October 2026:** Switched `fetchRunDetails` to `Promise.allSettled` so that 404 on ungenerated reports does not discard valid run metadata, traces, sources, or claims. Triggered automatic `fetchRunDetails` upon terminal event receipt so finished reports render immediately without manual reload.
 
 Evidence: [App.tsx:285](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:285), [App.tsx:308](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:308).
 

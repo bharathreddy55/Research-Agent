@@ -55,6 +55,7 @@ public class SearcherAgent {
                 break;
             }
 
+            com.researchagent.execution.RunControl.checkActive();
             List<SearchResult> results = searchService.search(query, maxPerQuery);
             for (SearchResult res : results) {
                 if (collectedSources.size() >= maxPages) {

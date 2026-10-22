@@ -77,7 +77,7 @@ public class RunController {
 
     /**
      * POST /api/runs/{id}/cancel
-     * Halts research agent execution immediately.
+     * Requests cooperative cancellation; an already-started call may still finish.
      */
     @PostMapping("/{id}/cancel")
     public ResponseEntity<RunResponse> cancelRun(@PathVariable String id) {

@@ -66,6 +66,7 @@ public class SafeWebReader {
             int redirectCount = 0;
 
             while (redirectCount <= MAX_REDIRECTS) {
+                com.researchagent.execution.RunControl.checkActive();
                 URI uri = new URI(currentUrl);
                 validateUri(uri);
 
@@ -112,7 +113,13 @@ public class SafeWebReader {
                     char[] buffer = new char[8192];
                     StringBuilder sb = new StringBuilder();
                     int charsRead;
+                    long lastCancellationCheck = System.nanoTime();
                     while ((charsRead = reader.read(buffer)) != -1) {
+                        // Bound polling during an active read without a DB query for every 8 KB.
+                        if (System.nanoTime() - lastCancellationCheck >= 100_000_000L) {
+                            com.researchagent.execution.RunControl.checkActive();
+                            lastCancellationCheck = System.nanoTime();
+                        }
                         sb.append(buffer, 0, charsRead);
                         if (sb.length() > MAX_CONTENT_LENGTH) {
                             break;
@@ -146,6 +153,8 @@ public class SafeWebReader {
         } catch (SecurityException se) {
             log.warn("SSRF Security violation blocked for URL {}: {}", targetUrl, se.getMessage());
             return new ExtractedPage(targetUrl, "", "", false, "Blocked by SSRF security guardrail: " + se.getMessage());
+        } catch (com.researchagent.execution.RunCancelledException e) {
+            throw e;
         } catch (Exception e) {
             log.warn("Failed to fetch URL {}: {}", targetUrl, e.getMessage());
             return new ExtractedPage(targetUrl, "", "", false, "Fetch failed: " + e.getMessage());

@@ -4,6 +4,10 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class Claim {
+    private com.researchagent.evidence.QuoteEvidence quoteEvidence;
+
+    public com.researchagent.evidence.QuoteEvidence getQuoteEvidence() { return quoteEvidence; }
+    public void setQuoteEvidence(com.researchagent.evidence.QuoteEvidence quoteEvidence) { this.quoteEvidence = quoteEvidence; }
     private String id;
     private String runId;
     private String subQuestion;

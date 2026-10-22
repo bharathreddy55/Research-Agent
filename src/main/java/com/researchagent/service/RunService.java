@@ -17,6 +17,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -113,9 +115,13 @@ public class RunService {
      */
     @Transactional
     public RunResponse cancelRun(String runId) {
-        RunEntity run = requireOwnedRun(runId);
+        String userId = CurrentUser.requireId();
+        RunEntity run = runRepository.findByIdForUpdate(runId)
+                .filter(entity -> userId.equals(entity.getUserId()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Run not found"));
 
-        if ("COMPLETED".equalsIgnoreCase(run.getStatus()) || "FAILED".equalsIgnoreCase(run.getStatus())) {
+        if ("COMPLETED".equalsIgnoreCase(run.getStatus()) || "FAILED".equalsIgnoreCase(run.getStatus())
+                || "CANCELLED".equalsIgnoreCase(run.getStatus())) {
             log.info("Run {} already finished with status {}", runId, run.getStatus());
             return mapToRunResponse(run);
         }
@@ -125,8 +131,16 @@ public class RunService {
         run.setFailureReason("User requested cancellation");
         runRepository.save(run);
 
-        eventPublisher.onEvent(runId, RunStatus.CANCELLED, AgentType.SYSTEM,
-                "Run cancelled by user", run.getTokensIn(), run.getTokensOut(), run.getCostPaise());
+        Runnable notifyCancellation = () -> eventPublisher.onEvent(runId, RunStatus.CANCELLED, AgentType.SYSTEM,
+                "Cancellation requested. An already-started provider call may finish and incur a charge; no further operations will start after the worker observes cancellation.",
+                run.getTokensIn(), run.getTokensOut(), run.getCostPaise());
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override public void afterCommit() { notifyCancellation.run(); }
+            });
+        } else {
+            notifyCancellation.run();
+        }
 
         log.info("Cancelled run {}", runId);
         return mapToRunResponse(run);

@@ -7,6 +7,9 @@ import com.researchagent.event.RedisEventPublisher;
 import com.researchagent.model.ResearchDepth;
 import com.researchagent.model.Run;
 import com.researchagent.model.RunStatus;
+import com.researchagent.model.AgentType;
+import com.researchagent.execution.RunControl;
+import com.researchagent.execution.RunCancelledException;
 import com.researchagent.service.DailySpendCapService;
 import com.researchagent.service.RunPersistenceService;
 import org.slf4j.Logger;
@@ -75,15 +78,19 @@ public class ResearchWorkerConsumer {
         String runId = message.getRunId();
         log.info("Worker received research job for run {} — query: {}", runId, message.getQuery());
 
-        // 1. Mark run as RUNNING in the DB
-        persistenceService.updateRunStatus(runId, RunStatus.RUNNING);
+        if (!persistenceService.tryStartRun(runId)) {
+            log.info("Skipping run {}: not queued (cancelled, terminal, or already claimed)", runId);
+            return;
+        }
 
         // Check global daily spend cap (Audit B4)
         if (dailySpendCapService != null && dailySpendCapService.wouldExceedGlobalDailyCap(message.getBudgetCapPaise())) {
             String reason = "Global daily spend cap exceeded. Run rejected.";
             log.warn("Run {} rejected: {}", runId, reason);
             persistenceService.failRun(runId, reason);
-            eventPublisher.onEvent(runId, RunStatus.FAILED, com.researchagent.model.AgentType.SYSTEM, reason, 0, 0, 0);
+            if (!persistenceService.isCancellationRequested(runId)) {
+                eventPublisher.onEvent(runId, RunStatus.FAILED, AgentType.SYSTEM, reason, 0, 0, 0);
+            }
             return;
         }
 
@@ -93,53 +100,47 @@ public class ResearchWorkerConsumer {
             // 2. Execute the full 7-agent pipeline with the worker-assigned runId.
             //    eventPublisher is our RunEventListener — each agent step fires onEvent(),
             //    which publishes to Redis run:{runId}:events for SSE forwarding.
-            Run completedRun = orchestrator.executeRun(
-                    runId,
-                    message.getQuery(),
-                    depth,
-                    message.getBudgetCapPaise(),
-                    eventPublisher
-            );
-
-            // 3. Persist results to PostgreSQL
-            persistenceService.updateRunStatus(runId, completedRun.getStatus());
-            persistenceService.updateRunCost(runId,
-                    completedRun.getCostPaise(),
-                    completedRun.getTokensIn(),
-                    completedRun.getTokensOut());
-
-            if (!completedRun.getSteps().isEmpty()) {
-                completedRun.getSteps().forEach(step -> persistenceService.saveStep(runId, step));
-            }
-            if (completedRun.getSources() != null && !completedRun.getSources().isEmpty()) {
-                persistenceService.saveSources(runId, completedRun.getSources());
-            }
-            if (completedRun.getClaims() != null && !completedRun.getClaims().isEmpty()) {
-                persistenceService.saveClaims(runId, completedRun.getClaims());
-            }
-            if (completedRun.getReport() != null) {
-                persistenceService.saveReport(runId, completedRun.getReport());
+            Run completedRun;
+            try (RunControl.Scope ignored = RunControl.open(() -> persistenceService.isCancellationRequested(runId))) {
+                RunControl.checkActive();
+                completedRun = orchestrator.executeRun(
+                        runId, message.getQuery(), depth, message.getBudgetCapPaise(),
+                        (id, status, agent, text, in, out, cost) -> {
+                            // Terminal events belong to the worker after persistence commits.
+                            if (status != RunStatus.COMPLETED && status != RunStatus.FAILED && status != RunStatus.CANCELLED) {
+                                RunControl.checkActive();
+                                eventPublisher.onEvent(id, status, agent, text, in, out, cost);
+                            }
+                        });
             }
 
-            if (completedRun.getStatus() == RunStatus.FAILED) {
-                log.warn("Run {} completed with FAILED status: {}", runId, completedRun.getFailureReason());
-                persistenceService.failRun(runId, completedRun.getFailureReason());
-            } else {
-                log.info("Run {} completed successfully. Cost: {} paise, tokens: {}+{}",
-                        runId, completedRun.getCostPaise(),
-                        completedRun.getTokensIn(), completedRun.getTokensOut());
-            }
+            RunStatus storedStatus = persistenceService.persistRunResult(runId, completedRun);
+            String messageText = storedStatus == RunStatus.CANCELLED
+                    ? "Run cancelled. Any cost from an already-started provider call is included when available."
+                    : storedStatus == RunStatus.COMPLETED ? "Research completed. Report is available."
+                    : "Research failed: " + completedRun.getFailureReason();
+            eventPublisher.onEvent(runId, storedStatus, AgentType.SYSTEM, messageText,
+                    completedRun.getTokensIn(), completedRun.getTokensOut(), completedRun.getCostPaise());
+            log.info("Run {} finished with {} (cost {} paise)", runId, storedStatus, completedRun.getCostPaise());
 
+        } catch (RunCancelledException e) {
+            // Cancellation may win after claim but before the orchestrator starts.
+            persistenceService.persistRunResult(runId, Run.builder().id(runId).status(RunStatus.CANCELLED)
+                    .failureReason("User requested cancellation").build());
+            log.info("Run {} cancelled before further work could start", runId);
         } catch (Exception e) {
-            // Non-transient failures are marked FAILED in DB.
-            // Transient failures (network, OOM) are left to Spring AMQP retry / DLQ.
+            // Persist failure unless cancellation/another terminal transition won.
             log.error("Unhandled exception processing run {}: {}", runId, e.getMessage(), e);
             try {
                 persistenceService.failRun(runId, e.getMessage());
+                if (persistenceService.isCancellationRequested(runId)) {
+                    log.info("Run {} was cancelled while an operation failed; acknowledging without retry", runId);
+                    return;
+                }
             } catch (Exception dbEx) {
                 log.error("Failed to persist FAILED status for run {}: {}", runId, dbEx.getMessage());
             }
-            // Re-throw so Spring AMQP retries (up to max-attempts) → DLQ
+            // Ask AMQP to redeliver on error; terminal rows will not execute again.
             throw new RuntimeException("Research job failed for runId=" + runId, e);
         }
     }

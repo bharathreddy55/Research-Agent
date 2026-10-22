@@ -16,6 +16,7 @@ This document tracks the steps you need to perform from your side. As you comple
 - [ ] **Step A3: Generate your Login Password Hash**
   - Run in PowerShell:
     ```powershell
+    mvn -DskipTests compile
     ./scripts/hash-password.ps1
     ```
   - Enter your desired password when prompted. It will print a BCrypt hash starting with `$2a$...`
@@ -69,8 +70,9 @@ This document tracks the steps you need to perform from your side. As you comple
   - Open the generated PDF and verify formatting, title cover, and clean typography.
 - [ ] **Step C6: Test Run Cancellation**
   - Submit a new research run with depth **DEEP**.
-  - While it is searching or reading, click the red **Stop LLM Spend (Cancel)** button.
-  - Verify the status immediately transitions to `CANCELLED` and spend stops.
+  - While it is searching or reading, click **Cancel research**.
+  - Verify the status changes to `CANCELLED`, with no subsequent operations after the worker observes cancellation. A call already in progress may finish and incur a charge; refresh details once it returns to inspect recorded usage.
+  - Cancel a queued run and verify the worker skips it. A cancelled run must not later change to `COMPLETED` or `FAILED`.
 
 ---
 

@@ -51,16 +51,14 @@ class WorkerCrashRecoveryServiceTest {
 
         when(runRepository.findAll()).thenReturn(List.of(danglingRun, completedRun));
         when(stepRepository.findByRunIdOrderBySeqAsc("dangling-1")).thenReturn(List.of(step1));
+        when(runRepository.failIfActive(eq("dangling-1"), anyString(), any(java.time.Instant.class))).thenReturn(1);
 
         crashRecoveryService.recoverDanglingRunsOnStartup();
 
-        ArgumentCaptor<RunEntity> captor = ArgumentCaptor.forClass(RunEntity.class);
-        verify(runRepository).save(captor.capture());
-
-        RunEntity saved = captor.getValue();
-        assertThat(saved.getId()).isEqualTo("dangling-1");
-        assertThat(saved.getStatus()).isEqualTo(RunStatus.FAILED.name());
-        assertThat(saved.getFailureReason()).contains("interrupted by worker restart");
-        assertThat(saved.getFinishedAt()).isNotNull();
+        ArgumentCaptor<String> reason = ArgumentCaptor.forClass(String.class);
+        verify(runRepository).failIfActive(eq("dangling-1"), reason.capture(), any(java.time.Instant.class));
+        assertThat(reason.getValue()).contains("interrupted by worker restart", "after step 1 (PLANNER)");
+        verify(runRepository, never()).save(any(RunEntity.class));
+        assertThat(danglingRun.getStatus()).isEqualTo("READING"); // Do not write a stale snapshot.
     }
 }

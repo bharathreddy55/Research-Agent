@@ -64,13 +64,11 @@ public class WorkerCrashRecoveryService {
                         : "after step " + steps.get(steps.size() - 1).getSeq() + " (" + steps.get(steps.size() - 1).getAgent() + ")";
 
                 String reason = "Run interrupted by worker restart (" + lastStepInfo + ")";
-                log.warn("Recovering dangling run {} (last status: {}) -> Marking FAILED: {}", run.getId(), run.getStatus(), reason);
+                log.warn("Attempting recovery for run {} (snapshot status: {}): {}", run.getId(), run.getStatus(), reason);
 
-                run.setStatus(RunStatus.FAILED.name());
-                run.setFailureReason(reason);
-                run.setFinishedAt(Instant.now());
-                runRepository.save(run);
-                recoveredCount++;
+                // The startup snapshot may be stale. Do not overwrite a terminal
+                // transition committed by an API request or another worker since it was read.
+                recoveredCount += runRepository.failIfActive(run.getId(), reason, Instant.now());
             }
         }
 

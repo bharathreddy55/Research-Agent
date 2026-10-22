@@ -7,6 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.annotation.Propagation;
 
 import java.time.Instant;
 import java.util.List;
@@ -71,12 +72,13 @@ public class RunPersistenceService {
     /** Updates the status column for an existing run. */
     @Transactional
     public void updateRunStatus(String runId, RunStatus status) {
-        Optional<RunEntity> opt = runRepository.findById(runId);
+        Optional<RunEntity> opt = runRepository.findByIdForUpdate(runId);
         if (opt.isEmpty()) {
             log.warn("updateRunStatus: run {} not found", runId);
             return;
         }
         RunEntity entity = opt.get();
+        if (isTerminal(entity.getStatus())) return;
         entity.setStatus(status.name());
         if (status == RunStatus.FAILED || status == RunStatus.COMPLETED || status == RunStatus.CANCELLED) {
             entity.setFinishedAt(Instant.now());
@@ -88,10 +90,10 @@ public class RunPersistenceService {
     /** Persists the final cost/token counters from a completed run. */
     @Transactional
     public void updateRunCost(String runId, long totalCostPaise, int tokensIn, int tokensOut) {
-        runRepository.findById(runId).ifPresent(entity -> {
-            entity.setCostPaise(totalCostPaise);
-            entity.setTokensIn(tokensIn);
-            entity.setTokensOut(tokensOut);
+        runRepository.findByIdForUpdate(runId).ifPresent(entity -> {
+            entity.setCostPaise(Math.max(entity.getCostPaise(), totalCostPaise));
+            entity.setTokensIn(Math.max(entity.getTokensIn(), tokensIn));
+            entity.setTokensOut(Math.max(entity.getTokensOut(), tokensOut));
             runRepository.save(entity);
         });
     }
@@ -99,12 +101,70 @@ public class RunPersistenceService {
     /** Marks a run FAILED with the given reason. */
     @Transactional
     public void failRun(String runId, String reason) {
-        runRepository.findById(runId).ifPresent(entity -> {
+        runRepository.findByIdForUpdate(runId).ifPresent(entity -> {
+            if (isTerminal(entity.getStatus())) return;
             entity.setStatus(RunStatus.FAILED.name());
             entity.setFailureReason(truncate(reason, 1000));
             entity.setFinishedAt(Instant.now());
             runRepository.save(entity);
         });
+    }
+
+    /** Atomically claim a queued job. Cancelled, terminal, and duplicate jobs are skipped. */
+    @Transactional
+    public boolean tryStartRun(String runId) {
+        Optional<RunEntity> found = runRepository.findByIdForUpdate(runId);
+        // Publication currently precedes the API transaction's commit. Retry a
+        // missing row instead of acknowledging a message whose row is not visible yet.
+        if (found.isEmpty()) throw new IllegalStateException("Run is not yet available: " + runId);
+        RunEntity entity = found.get();
+        if (!RunStatus.PENDING.name().equals(entity.getStatus()) && !RunStatus.QUEUED.name().equals(entity.getStatus())) return false;
+        entity.setStatus(RunStatus.RUNNING.name());
+        runRepository.save(entity);
+        return true;
+    }
+
+    /** Scalar query in a fresh transaction: do not reuse an old managed entity's status. */
+    @Transactional(readOnly = true, propagation = Propagation.REQUIRES_NEW)
+    public boolean isCancellationRequested(String runId) {
+        String status = runRepository.findStatusById(runId)
+                .orElseThrow(() -> new IllegalStateException("Run no longer exists: " + runId));
+        return RunStatus.CANCELLED.name().equals(status);
+    }
+
+    /** Final artifacts and terminal status commit together while holding the same
+     * row lock used by cancellation. A cancellation that wins keeps its status. */
+    @Transactional
+    public RunStatus persistRunResult(String runId, Run result) {
+        RunEntity entity = runRepository.findByIdForUpdate(runId)
+                .orElseThrow(() -> new IllegalStateException("Run no longer exists: " + runId));
+        if (RunStatus.COMPLETED.name().equals(entity.getStatus()) || RunStatus.FAILED.name().equals(entity.getStatus())) {
+            return RunStatus.valueOf(entity.getStatus());
+        }
+        entity.setCostPaise(Math.max(entity.getCostPaise(), result.getCostPaise()));
+        entity.setTokensIn(Math.max(entity.getTokensIn(), result.getTokensIn()));
+        entity.setTokensOut(Math.max(entity.getTokensOut(), result.getTokensOut()));
+        if (RunStatus.CANCELLED.name().equals(entity.getStatus())) {
+            runRepository.save(entity);
+            return RunStatus.CANCELLED;
+        }
+        if (result.getStatus() == null || !isTerminal(result.getStatus().name())) {
+            throw new IllegalArgumentException("Worker result must have a terminal status");
+        }
+        result.getSteps().forEach(step -> saveStep(runId, step));
+        saveSources(runId, result.getSources());
+        saveClaims(runId, result.getClaims());
+        if (result.getStatus() == RunStatus.COMPLETED && result.getReport() != null) saveReport(runId, result.getReport());
+        entity.setStatus(result.getStatus().name());
+        entity.setFailureReason(truncate(result.getFailureReason(), 1000));
+        entity.setFinishedAt(result.getFinishedAt() != null ? result.getFinishedAt() : Instant.now());
+        runRepository.save(entity);
+        return result.getStatus();
+    }
+
+    private static boolean isTerminal(String status) {
+        return RunStatus.CANCELLED.name().equals(status) || RunStatus.COMPLETED.name().equals(status)
+                || RunStatus.FAILED.name().equals(status);
     }
 
     // -------------------------------------------------------------------------
@@ -140,9 +200,10 @@ public class RunPersistenceService {
         if (sources == null || sources.isEmpty()) return;
         for (Source s : sources) {
             SourceEntity entity = new SourceEntity();
+            entity.setSnapshotId(s.getSnapshotId());
             entity.setRunId(runId);
             entity.setSourceNumber(s.getId());        // 1-indexed citation id
-            entity.setUrl(truncate(s.getUrl(), 2048));
+            entity.setUrl(s.getUrl());
             entity.setTitle(truncate(s.getTitle(), 512));
             entity.setSnippet(truncate(s.getSnippet(), 1000));
             entity.setDomain(truncate(s.getDomain(), 128));
@@ -167,8 +228,19 @@ public class RunPersistenceService {
             ClaimEntity entity = new ClaimEntity();
             entity.setId(c.getId() != null ? c.getId() : UUID.randomUUID().toString());
             entity.setRunId(runId);
-            entity.setStatement(truncate(c.getStatement(), 2000));
-            entity.setExactQuote(truncate(c.getExactQuote(), 1000));
+            entity.setStatement(c.getStatement());
+            entity.setExactQuote(c.getExactQuote());
+            entity.setSourceUrl(c.getSourceUrl());
+            if (c.getQuoteEvidence() != null) {
+                var evidence = c.getQuoteEvidence();
+                entity.setSubmittedQuote(evidence.submittedQuote());
+                entity.setEvidenceSnapshotId(evidence.sourceSnapshotId());
+                entity.setEvidenceContentHash(evidence.sourceContentHash());
+                entity.setQuoteStart(evidence.start());
+                entity.setQuoteEnd(evidence.end());
+                entity.setQuoteMatchStatus(evidence.matchStatus().name());
+                entity.setQuoteNormalizationVersion(evidence.normalizationVersion());
+            }
             entity.setSourceId(c.getSourceId());
             entity.setSourceDomain(truncate(c.getSourceDomain(), 128));
             entity.setStatus(c.getStatus() != null ? c.getStatus().name() : ClaimStatus.UNVERIFIED.name());

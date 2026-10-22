@@ -10,6 +10,8 @@ import com.researchagent.model.RunStatus;
 import com.researchagent.model.Source;
 import com.researchagent.model.StepTrace;
 import com.researchagent.tools.CostTracker;
+import com.researchagent.execution.RunControl;
+import com.researchagent.execution.RunCancelledException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -85,14 +87,18 @@ public class ResearchOrchestrator {
     public Run executeRun(String runId, String query, ResearchDepth depth, long budgetCapPaise, RunEventListener listener) {
         AtomicBoolean cancellationToken = new AtomicBoolean(false);
         cancellationTokens.put(runId, cancellationToken);
-        return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+        try (RunControl.Scope ignored = RunControl.open(cancellationToken::get)) {
+            return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+        }
     }
 
     public Run executeRun(String query, ResearchDepth depth, long budgetCapPaise, RunEventListener listener) {
         String runId = UUID.randomUUID().toString();
         AtomicBoolean cancellationToken = new AtomicBoolean(false);
         cancellationTokens.put(runId, cancellationToken);
-        return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+        try (RunControl.Scope ignored = RunControl.open(cancellationToken::get)) {
+            return executeRunInternal(runId, query, depth, budgetCapPaise, listener, cancellationToken);
+        }
     }
 
     private Run executeRunInternal(String runId, String query, ResearchDepth depth, long budgetCapPaise,
@@ -253,12 +259,16 @@ public class ResearchOrchestrator {
                     String.format("Research completed successfully! Total cost: %d paise (~₹%.2f). Report saved to: %s",
                             run.getCostPaise(), (double) run.getCostPaise() / 100.0, savedMarkdownPath.toString()), budgetState);
 
+        } catch (RunCancelledException e) {
+            markCancelled(run, listener, budgetState);
         } catch (Exception e) {
             log.error("Run {} failed with error: {}", runId, e.getMessage(), e);
             run.setStatus(RunStatus.FAILED);
             run.setFailureReason(e.getMessage());
             run.setFinishedAt(Instant.now());
             run.setCostPaise(budgetState.getTotalCostPaise());
+            run.setTokensIn(budgetState.getTotalTokensIn());
+            run.setTokensOut(budgetState.getTotalTokensOut());
             emitEvent(listener, runId, RunStatus.FAILED, AgentType.SYSTEM, "Run failed: " + e.getMessage(), budgetState);
         } finally {
             cancellationTokens.remove(runId);
@@ -268,15 +278,23 @@ public class ResearchOrchestrator {
     }
 
     private boolean checkCancellation(Run run, RunEventListener listener, CostTracker.RunBudgetState budgetState) {
+        RunControl.checkActive();
         if (isCancelled(run.getId())) {
-            run.setStatus(RunStatus.CANCELLED);
-            run.setFailureReason("User cancelled research job");
-            run.setFinishedAt(Instant.now());
-            run.setCostPaise(budgetState.getTotalCostPaise());
-            emitEvent(listener, run.getId(), RunStatus.CANCELLED, AgentType.SYSTEM, "Job cancelled by user. Stopped all LLM spend.", budgetState);
+            markCancelled(run, listener, budgetState);
             return true;
         }
         return false;
+    }
+
+    private void markCancelled(Run run, RunEventListener listener, CostTracker.RunBudgetState budgetState) {
+        run.setStatus(RunStatus.CANCELLED);
+        run.setFailureReason("User requested cancellation; already-started provider calls may still incur cost");
+        run.setFinishedAt(Instant.now());
+        run.setCostPaise(budgetState.getTotalCostPaise());
+        run.setTokensIn(budgetState.getTotalTokensIn());
+        run.setTokensOut(budgetState.getTotalTokensOut());
+        run.setReport(null);
+        emitEvent(listener, run.getId(), RunStatus.CANCELLED, AgentType.SYSTEM, run.getFailureReason(), budgetState);
     }
 
     private void emitEvent(RunEventListener listener, String runId, RunStatus status, AgentType agent, String message, CostTracker.RunBudgetState budget) {
@@ -296,6 +314,7 @@ public class ResearchOrchestrator {
     }
 
     private Path saveReportToDisk(String runId, String markdown) {
+        RunControl.checkActive();
         try {
             Path outputDir = Paths.get(reportsOutputDir);
             if (!Files.exists(outputDir)) {

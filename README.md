@@ -131,7 +131,16 @@ Select `LLM_PROVIDER=gemini` or `LLM_PROVIDER=openai` and configure that provide
 
 For an intentional demo, select `LLM_PROVIDER=mock` (the `local` profile also selects this provider). Demo reports display **DEMO MODE — SYNTHETIC OUTPUT**, generate no factual claims or quotations, and record zero model tokens and model cost. Real API keys are ignored in mock mode. Search and page fetching are separate services and may still access the web in a demo run.
 
+### Quotation evidence
+
+ReaderAgent accepts a claim only when its quotation matches the fetched, extracted page text. `literal-whitespace-v1` first tries a literal match, then permits only whitespace folding (including nonbreaking spaces). It trims outer whitespace and preserves case, punctuation, numbers, units, and negation. Word fragments and partial decimal values are rejected. This establishes text provenance; semantic support, source independence, and report citation accuracy remain separate checks.
+
+Accepted claims retain the unmodified source passage, submitted model quotation, requested source URL, snapshot UUID, SHA-256 hash of UTF-8 extracted text, match status, normalization version, and half-open UTF-16 character offsets. Source text/identity fields cannot be overwritten by normal ORM updates. Full quotations are saved without truncation. The Claims tab can highlight the passage in the saved snapshot even after the live page changes. These snapshots contain extracted text rather than archived HTML. Rejected extractions are excluded from claims and recorded as counts/reasons with bounded examples in the reader trace.
+
+Restart the backend after updating: the existing Hibernate schema-update configuration adds nullable evidence columns. Older claims remain readable with validation unavailable; run research again to create checked evidence. No historical validation is inferred. Regression tests use simulated model outputs and H2; production PostgreSQL migration and browser appearance require separate acceptance checks.
+
 ## Local sign-in and private runs
+
 
 The web server requires `AUTH_USERS_JSON`, a JSON object mapping stable lowercase usernames (letters, numbers, `.`, `_`, `-`, up to 64 characters) to BCrypt password hashes with cost 10–16. There are no built-in credentials, public registration, or password reset endpoints. Account provisioning is an administrator operation; restart the server after changing accounts. Authentication accounts are required only in server mode; CLI mode remains available.
 
@@ -163,6 +172,14 @@ For API clients, first GET `/api/auth/csrf` while retaining cookies, POST URL-en
 Set `AUTH_ALLOWED_ORIGINS` to the exact frontend origins you serve. Use HTTPS and `AUTH_COOKIE_SECURE=true` when deploying. Host the dashboard and API on the same site for SameSite=Lax cookies; a different-site deployment requires a separate cookie policy. The default browser API origin is `http://localhost:8085`; set `VITE_API_ORIGIN` in `frontend/.env.local` before a local build to change it. Sessions currently live in one backend instance's memory: restarting requires sign-in again, and multiple instances need sticky sessions or a shared session store.
 
 PDFs preserve headings, lists, tables, code, and HTTP/HTTPS citation links. Report images, embedded media, and user-supplied styles are removed; the renderer cannot load remote or local resources. Citation links remain clickable and are not fetched during rendering.
+
+## Cancelling research
+
+Use **Cancel research** to persist a cancellation request. A queued cancelled job is skipped by workers. Active workers check the shared database status before model calls, search requests, page reads, and redirects, and periodically during active page reads. Cancellation also blocks a second reflection/revision call. The synchronous model SDKs are configured for one attempt so their retry loops cannot start further attempts after cancellation.
+
+Cancellation is cooperative: a request already sent to a provider may finish or time out and may still be billed. Returned token usage is retained, including usage from a call that finished after cancellation. If a failed provider request supplies no usage, the application cannot determine its final bill from that response. Refresh run details after the worker returns to see the latest recorded usage.
+
+Cancellation and final result persistence lock the same database row. If cancellation wins, later worker results cannot change the run to COMPLETED or FAILED and no final database report is saved. If completion commits first, a later cancel request returns the completed run. Worker terminal events are published after result persistence commits, so a completion event refers to an available report. Cancelled jobs are acknowledged without repeating research.
 
 ## 📄 License
 MIT License — free for educational and commercial development.

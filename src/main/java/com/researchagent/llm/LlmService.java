@@ -77,6 +77,8 @@ public class LlmService {
                 this.chatModel = OpenAiChatModel.builder()
                         .apiKey(openAiApiKey)
                         .modelName(openAiModel)
+                        // 0.36.2 treats this as max attempts; no hidden transport retries.
+                        .maxRetries(1)
                         .temperature(temperature)
                         .build();
             } else {
@@ -84,6 +86,7 @@ public class LlmService {
                 this.chatModel = GoogleAiGeminiChatModel.builder()
                         .apiKey(geminiApiKey)
                         .modelName(geminiModel)
+                        .maxRetries(1)
                         .temperature(temperature)
                         .build();
             }
@@ -154,6 +157,7 @@ public class LlmService {
     }
 
     public LlmCallResult generate(String systemPrompt, String userPrompt) {
+        com.researchagent.execution.RunControl.checkActive();
         List<ChatMessage> messages = new ArrayList<>();
         if (systemPrompt != null && !systemPrompt.isBlank()) {
             messages.add(SystemMessage.from(systemPrompt));

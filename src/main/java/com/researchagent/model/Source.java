@@ -1,6 +1,9 @@
 package com.researchagent.model;
 
 public class Source {
+    private String snapshotId;
+    public String getSnapshotId() { return snapshotId; }
+    public void setSnapshotId(String snapshotId) { this.snapshotId = snapshotId; }
     private int id; // 1-indexed citation number
     private String runId;
     private String url;

@@ -34,6 +34,9 @@ class ResearchWorkerConsumerTest {
     private final AtomicBoolean orchestratorCalled = new AtomicBoolean(false);
     private final AtomicReference<String> executedRunId = new AtomicReference<>();
     private final AtomicBoolean dailyCapWouldExceed = new AtomicBoolean(false);
+    private final AtomicBoolean canClaim = new AtomicBoolean(true);
+    private final AtomicBoolean cancelled = new AtomicBoolean(false);
+    private final List<String> executionOrder = new ArrayList<>();
 
     // The Run object the stub orchestrator will return
     private Run stubbedRun;
@@ -55,6 +58,7 @@ class ResearchWorkerConsumerTest {
         orchestratorCalled.set(false);
         executedRunId.set(null);
         dailyCapWouldExceed.set(false);
+        canClaim.set(true); cancelled.set(false); executionOrder.clear();
 
         // Stub orchestrator — overrides the 5-arg executeRun
         stubOrchestrator = new ResearchOrchestrator(null, null, null, null, null, null, null, null, "./reports") {
@@ -69,6 +73,16 @@ class ResearchWorkerConsumerTest {
 
         // Stub persistence — records what was persisted
         stubPersistenceService = new RunPersistenceService(null, null, null, null, null) {
+            @Override public boolean tryStartRun(String runId) {
+                if (!canClaim.get()) return false;
+                statusUpdates.add(runId + ":RUNNING"); return true;
+            }
+            @Override public boolean isCancellationRequested(String runId) { return cancelled.get(); }
+            @Override public RunStatus persistRunResult(String runId, Run result) {
+                executionOrder.add("persist");
+                RunStatus status = cancelled.get() ? RunStatus.CANCELLED : result.getStatus();
+                statusUpdates.add(runId + ":" + status.name()); return status;
+            }
             @Override
             public void updateRunStatus(String runId, RunStatus status) {
                 statusUpdates.add(runId + ":" + status.name());
@@ -93,7 +107,7 @@ class ResearchWorkerConsumerTest {
         stubEventPublisher = new RedisEventPublisher(null, new com.fasterxml.jackson.databind.ObjectMapper()) {
             @Override
             public void onEvent(String runId, RunStatus status, AgentType agent, String message,
-                                int tokensIn, int tokensOut, long costPaise) { /* no-op */ }
+                                int tokensIn, int tokensOut, long costPaise) { executionOrder.add("event:" + status); }
         };
 
         // Stub daily spend cap service
@@ -183,4 +197,52 @@ class ResearchWorkerConsumerTest {
 
         assertThat(failedRuns).contains("run-300");
     }
+    @Test
+    void cancelledQueuedJobIsAcknowledgedWithoutStartingThePipeline() {
+        canClaim.set(false);
+        workerConsumer.handleResearchJob(new ResearchJobMessage("queued-cancel", "user-1", "Query", "QUICK", 1500));
+        assertThat(orchestratorCalled.get()).isFalse();
+        assertThat(statusUpdates).isEmpty();
+        assertThat(executionOrder).isEmpty();
+    }
+
+    @Test
+    void cancellationAfterClaimStopsBeforeThePipelineAndDoesNotRetry() {
+        cancelled.set(true);
+        workerConsumer.handleResearchJob(new ResearchJobMessage("claimed-cancel", "user-1", "Query", "QUICK", 1500));
+        assertThat(orchestratorCalled.get()).isFalse();
+        assertThat(statusUpdates).contains("claimed-cancel:CANCELLED");
+        assertThat(failedRuns).isEmpty();
+    }
+
+    @Test
+    void terminalEventWaitsForPersistenceAndReflectsCancellationWinningTheRace() {
+        ResearchOrchestrator finishing = new ResearchOrchestrator(null, null, null, null, null, null, null, null, "./reports") {
+            @Override public Run executeRun(String id, String query, ResearchDepth depth, long budget,
+                    com.researchagent.agent.RunEventListener listener) {
+                listener.onEvent(id, RunStatus.COMPLETED, AgentType.SYSTEM, "premature completion", 0, 0, 0);
+                cancelled.set(true);
+                return Run.builder().id(id).status(RunStatus.COMPLETED).build();
+            }
+        };
+        new ResearchWorkerConsumer(finishing, stubPersistenceService, stubEventPublisher, stubDailySpendCapService)
+                .handleResearchJob(new ResearchJobMessage("finish-race", "user-1", "Query", "QUICK", 1500));
+        assertThat(executionOrder).containsExactly("persist", "event:CANCELLED");
+        assertThat(statusUpdates).doesNotContain("finish-race:COMPLETED");
+    }
+
+    @Test
+    void providerFailureAfterCancellationDoesNotTriggerJobRetry() {
+        ResearchOrchestrator failing = new ResearchOrchestrator(null, null, null, null, null, null, null, null, "./reports") {
+            @Override public Run executeRun(String id, String query, ResearchDepth depth, long budget,
+                    com.researchagent.agent.RunEventListener listener) {
+                cancelled.set(true);
+                throw new RuntimeException("In-flight provider call failed");
+            }
+        };
+        new ResearchWorkerConsumer(failing, stubPersistenceService, stubEventPublisher, stubDailySpendCapService)
+                .handleResearchJob(new ResearchJobMessage("failure-cancel", "user-1", "Query", "QUICK", 1500));
+        assertThat(executionOrder).doesNotContain("event:FAILED", "event:COMPLETED");
+    }
+
 }

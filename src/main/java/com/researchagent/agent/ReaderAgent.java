@@ -3,6 +3,8 @@ package com.researchagent.agent;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.researchagent.llm.LlmService;
+import com.researchagent.evidence.EvidenceValidator;
+import com.researchagent.evidence.QuoteEvidence;
 import com.researchagent.model.AgentType;
 import com.researchagent.model.Claim;
 import com.researchagent.model.ClaimStatus;
@@ -14,10 +16,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
-import java.security.MessageDigest;
 import java.util.ArrayList;
-import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Component
@@ -27,6 +28,7 @@ public class ReaderAgent {
     private final SafeWebReader safeWebReader;
     private final LlmService llmService;
     private final ObjectMapper objectMapper;
+    private final EvidenceValidator evidenceValidator = new EvidenceValidator();
 
     public ReaderAgent(SafeWebReader safeWebReader, LlmService llmService, ObjectMapper objectMapper) {
         this.safeWebReader = safeWebReader;
@@ -56,6 +58,7 @@ public class ReaderAgent {
         int currentSeq = startSeq;
 
         for (Source source : sources) {
+            com.researchagent.execution.RunControl.checkActive();
             // Mid-run budget check: degrade gracefully if budget cap exceeded
             if (budgetState != null && budgetState.isBudgetExceeded()) {
                 log.warn("Budget cap exceeded ({} paise). Gracefully terminating further page reading.", budgetState.getBudgetCapPaise());
@@ -73,11 +76,18 @@ public class ReaderAgent {
             }
 
             source.setFetchedOk(true);
+            if (page.getCleanText() == null || page.getCleanText().isBlank()) {
+                source.setFetchedOk(false);
+                source.setFetchError("No extractable source text");
+                continue;
+            }
             if (page.getTitle() != null && !page.getTitle().isBlank()) {
                 source.setTitle(page.getTitle());
             }
             source.setContent(page.getCleanText());
-            source.setContentHash(hashContent(page.getCleanText()));
+            EvidenceValidator.PreparedSource evidence = evidenceValidator.prepare(page.getCleanText());
+            source.setContentHash(evidence.contentHash());
+            source.setSnapshotId(UUID.randomUUID().toString());
 
             // Prompt Injection Defense & Extraction
             String systemPrompt = """
@@ -112,7 +122,8 @@ public class ReaderAgent {
                 budgetState.recordStep(callResult.getTokensIn(), callResult.getTokensOut(), llmService.getActiveModelName());
             }
 
-            List<Claim> extractedClaims = parseClaims(callResult.getContent(), runId, source);
+            ExtractionResult extraction = parseClaims(callResult.getContent(), runId, source, evidence);
+            List<Claim> extractedClaims = extraction.claims;
             allClaims.addAll(extractedClaims);
 
             long durationMs = System.currentTimeMillis() - startTime;
@@ -121,9 +132,10 @@ public class ReaderAgent {
                     .runId(runId)
                     .seq(currentSeq++)
                     .agent(AgentType.READER)
-                    .action("Extracted " + extractedClaims.size() + " factual claims from [" + source.getId() + "] " + source.getDomain())
+                    .action("Accepted " + extractedClaims.size() + " quote-matched claims; rejected " + extraction.rejectedCount
+                            + " extraction attempts from [" + source.getId() + "] " + source.getDomain())
                     .prompt("Extracted from URL: " + source.getUrl())
-                    .response("Found " + extractedClaims.size() + " claims with verbatim quotes")
+                    .response(extractionSummary(extraction))
                     .tokensIn(callResult.getTokensIn())
                     .tokensOut(callResult.getTokensOut())
                     .costPaise(callResult.getCostPaise())
@@ -136,42 +148,72 @@ public class ReaderAgent {
         return new ReaderResult(sources, allClaims, traces);
     }
 
-    private List<Claim> parseClaims(String rawJson, String runId, Source source) {
-        List<Claim> claims = new ArrayList<>();
-        if (rawJson == null || rawJson.isBlank()) return claims;
-
+    private ExtractionResult parseClaims(String rawJson, String runId, Source source, EvidenceValidator.PreparedSource evidence) {
+        ExtractionResult result = new ExtractionResult();
+        JsonNode root;
         try {
-            String cleaned = cleanJsonString(rawJson);
-            JsonNode root = objectMapper.readTree(cleaned);
-            JsonNode claimsNode = root.path("claims");
-
-            if (claimsNode.isArray()) {
-                for (JsonNode item : claimsNode) {
-                    String statement = item.path("statement").asText("").trim();
-                    String quote = item.path("exactQuote").asText("").trim();
-
-                    if (!statement.isBlank()) {
-                        Claim claim = Claim.builder()
-                                .id(UUID.randomUUID().toString())
-                                .runId(runId)
-                                .statement(statement)
-                                .exactQuote(quote)
-                                .sourceId(source.getId())
-                                .sourceUrl(source.getUrl())
-                                .sourceDomain(source.getDomain())
-                                .status(ClaimStatus.UNVERIFIED) // initialized as unverified
-                                .build();
-                        claim.getSupportingDomains().add(source.getDomain());
-                        claim.getSupportingSourceIds().add(source.getId());
-                        claims.add(claim);
-                    }
-                }
-            }
+            root = objectMapper.readTree(cleanJsonString(rawJson == null ? "" : rawJson));
         } catch (Exception e) {
-            log.warn("Failed to parse claims JSON for source {}: {}", source.getId(), e.getMessage());
+            result.reject(-1, "MALFORMED_JSON", "", "");
+            log.warn("Rejected malformed claims JSON for source {}", source.getId());
+            return result;
         }
+        if (root == null || !root.path("claims").isArray()) {
+            result.reject(-1, "INVALID_CLAIMS_ARRAY", "", "");
+            return result;
+        }
+        JsonNode items = root.path("claims");
+        for (int index = 0; index < items.size(); index++) {
+            JsonNode item = items.get(index);
+            if (!item.isObject() || !item.path("statement").isTextual() || !item.path("exactQuote").isTextual()) {
+                result.reject(index, "INVALID_FIELDS", "", "");
+                continue;
+            }
+            String statement = item.path("statement").asText().trim();
+            String quote = item.path("exactQuote").asText();
+            if (statement.isBlank()) {
+                result.reject(index, "EMPTY_STATEMENT", statement, quote);
+                continue;
+            }
+            EvidenceValidator.Match match = evidence.match(quote);
+            if (!match.accepted()) {
+                result.reject(index, match.rejectionReason(), statement, quote);
+                continue;
+            }
+            Claim claim = Claim.builder().id(UUID.randomUUID().toString()).runId(runId)
+                    .statement(statement).exactQuote(match.originalQuote()).sourceId(source.getId())
+                    .sourceUrl(source.getUrl()).sourceDomain(source.getDomain()).status(ClaimStatus.UNVERIFIED).build();
+            claim.setQuoteEvidence(new QuoteEvidence(source.getSnapshotId(), source.getContentHash(), source.getUrl(),
+                    match.start(), match.end(), match.status(), EvidenceValidator.VERSION, quote));
+            claim.getSupportingDomains().add(source.getDomain());
+            claim.getSupportingSourceIds().add(source.getId());
+            result.claims.add(claim);
+        }
+        return result;
+    }
 
-        return claims;
+    private record RejectedExtraction(int itemIndex, String reason, String statementPreview, String quotePreview) {}
+
+    private static final class ExtractionResult {
+        final List<Claim> claims = new ArrayList<>();
+        final List<RejectedExtraction> rejectedExamples = new ArrayList<>();
+        int rejectedCount;
+        void reject(int index, String reason, String statement, String quote) {
+            rejectedCount++;
+            // Bound diagnostic samples so untrusted model output cannot flood the trace.
+            if (rejectedExamples.size() < 5) rejectedExamples.add(new RejectedExtraction(index, reason, preview(statement), preview(quote)));
+        }
+        private static String preview(String text) { return text.substring(0, Math.min(48, text.length())); }
+    }
+
+    private String extractionSummary(ExtractionResult result) {
+        try {
+            return objectMapper.writeValueAsString(Map.of("accepted", result.claims.size(), "rejected", result.rejectedCount,
+                    "rejectedExamples", result.rejectedExamples, "omittedRejectedExamples", result.rejectedCount - result.rejectedExamples.size(),
+                    "quoteValidationVersion", EvidenceValidator.VERSION));
+        } catch (Exception ex) {
+            throw new IllegalStateException("Could not serialize quotation validation trace", ex);
+        }
     }
 
     private String cleanJsonString(String text) {
@@ -187,13 +229,4 @@ public class ReaderAgent {
         return trimmed.trim();
     }
 
-    private String hashContent(String content) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            byte[] hash = digest.digest(content.getBytes());
-            return HexFormat.of().formatHex(hash);
-        } catch (Exception e) {
-            return "hash-error";
-        }
-    }
 }

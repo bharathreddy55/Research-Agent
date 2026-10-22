@@ -26,6 +26,7 @@ public class FallbackSearchService implements SearchService {
 
     @Override
     public List<SearchResult> search(String query, int maxResults) {
+        com.researchagent.execution.RunControl.checkActive();
         log.info("Executing Fallback search for query: '{}'", query);
         List<SearchResult> results = new ArrayList<>();
         try {

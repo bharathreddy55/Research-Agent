@@ -45,6 +45,7 @@ public class TavilySearchService implements SearchService {
 
     @Override
     public List<SearchResult> search(String query, int maxResults) {
+        com.researchagent.execution.RunControl.checkActive();
         if (!isConfigured()) {
             log.warn("Tavily API key is not configured. Returning empty results.");
             return List.of();

@@ -55,6 +55,10 @@ public class PdfReportService {
         try (ByteArrayOutputStream os = new ByteArrayOutputStream()) {
             PdfRendererBuilder builder = new PdfRendererBuilder();
             builder.useFastMode();
+            // In OpenHTMLtoPDF 1.0.10, image loading bypasses the access predicates.
+            // Reject URI resolution too, so no resource reaches any stream loader.
+            // Absolute citation links are written directly as PDF annotations.
+            builder.useUriResolver((baseUri, uri) -> null);
             // Deny every resource protocol, both before and after URI resolution.
             builder.useExternalResourceAccessControl((uri, type) -> false,
                     ExternalResourceControlPriority.RUN_BEFORE_RESOLVING_URI);

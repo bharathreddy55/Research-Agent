@@ -6,7 +6,26 @@ The project has a coherent skeleton, but I would not release it as a trustworthy
 
 P1 means fix before a shared or paid pilot. P2 means a substantive correctness, operational, or product gap to address before claiming the associated feature complete. Findings below are established by source inspection unless a reproduction is explicitly stated. Proposed acceptance criteria are future checks, not tests already passed.
 
-## Validation performed
+## Progress checked on 22 October 2026
+
+| Finding | Current status | Evidence and limits |
+|---|---|---|
+| 01 | Fixed; offline regression suite passes | Real-provider failure and explicit demo checks run without paid model calls. |
+| 02 | Fixed; security acceptance checks pass | Actual session/login/CSRF/CORS filters and controllers, two-user ownership checks, stream revocation, and H2 repository filtering are covered. |
+| 03 | Resource access fixed; regression checks pass | A newly exposed image-loader bypass in OpenHTMLtoPDF 1.0.10 was closed by rejecting resource URI resolution. Normal and unsanitized-renderer probes record zero loopback requests; local images are absent and citation annotations remain clickable. Rendering size/time limits and caching remain follow-up work. |
+| 04–05 | Fixed; current frontend production build passes | TypeScript and Vite build succeed. Browser appearance was not checked. |
+| 06 | Dockerfile corrected | Maven builder image is present; Docker Compose was not executed in this check. |
+| 07 | Fixed; cancellation regressions pass | Queued jobs are skipped, active workers consult persisted cancellation at operation boundaries, known in-flight usage is retained, and row locks/conditional updates prevent cancellation from being overwritten. Both terminal-state race orders and the real worker/API/database flow are covered with simulated provider calls. |
+| 10 | Quote provenance fixed; regression checks pass | Reader accepts exact/whitespace-only matches and retains saved snapshot/hash/span metadata. Database tests cover full quotations and later page changes; Claims UI exposes the saved passage. Claim-count limits and semantic support remain separate work. |
+| 13 | Fixed for the worker/API path | Reports and terminal state commit together; the worker suppresses early pipeline terminal events. The completion-event regression immediately reads the committed report successfully. |
+| 12, 18, 20 | Later implementation changes retained | Confidence formula, streaming state, and partial-result loading changes are present. Offline backend regressions and frontend build pass; no new browser acceptance checks were performed. |
+| 19 | Partially fixed | Callback refs prevent connection churn; disconnect still closes the stream, with no replay or missed-event recovery. |
+
+Validation: **121 offline backend tests passed, zero failures/errors**, excluding the live-web `ResearchBenchmarkEvalTest`. This retains the previous 95 checks and adds 26 quotation matching/reader/persistence cases. Latest logs are in `target/quote-validation-regression.log` and `target/quote-validation-frontend-build.log`. These checks use isolated test accounts/data and do not use the user's credentials, paid models, or deployed infrastructure. Database checks use H2; PostgreSQL/Docker and browser acceptance have not been performed.
+
+The next requested priority is **build-review comment 2: independent source corroboration**. Budgeting and model pricing are outside the user's current scope. The original observations below are historical; resolution notes and the current status above take precedence.
+
+## Original validation performed on 10 October 2026
 
 - Existing backend suite excluding ResearchBenchmarkEvalTest: **39 tests passed, zero failures/errors**. The sandboxed run stalled; the rerun outside it passed. Log: [backend test log](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/target/audit-backend-tests.log).
 - Frontend production build: **failed** at App.tsx:119 with TS2339 for the unsupported inline property.
@@ -31,7 +50,7 @@ Missing credentials, initialization errors, and generation exceptions all lead t
 
 ### 02. [P1] No authentication or ownership enforcement protects the API
 
-**Implemented on 10 October 2026; runtime acceptance checks pending:** Configured local BCrypt accounts, browser sessions, CSRF protection, explicit credentialed CORS origins, and sign-in/sign-out UI were added. API run creation derives identity from the authenticated principal. Lists are filtered by owner, and every run/artifact operation checks ownership, including SSE and PDF downloads. Other users' IDs return 404. No default account is provided; legacy runs require explicit administrator reassignment if their stored owner does not match an account. Backend and existing test sources compile; new security behavior has not been exercised in runtime tests.
+**Implemented on 10 October; verified on 22 October 2026:** Configured local BCrypt accounts, browser sessions, CSRF protection, explicit credentialed CORS origins, and sign-in/sign-out UI were added. API creation derives identity from the authenticated principal, lists filter by owner, and all run/artifact operations check ownership, including SSE/PDF. Two-user API checks pass for history, metadata, reports, traces, sources, claims, PDF, streaming, and cancellation. Missing/stale CSRF, anonymous paid work, spoofed user headers, invalid passwords, unsafe account configuration, and untrusted origins are rejected. Logout, identity changes, and session invalidation revoke existing streams. H2 checks confirm ownership filtering occurs before pagination. Local accounts still require administrator setup, and no browser or deployment acceptance is claimed.
 
 Evidence: [RunController.java:21](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/controller/RunController.java:21), [RunService.java:107](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/service/RunService.java:107).
 
@@ -43,7 +62,7 @@ The create endpoint trusts X-User-Id, the list endpoint returns all runs, and re
 
 ### 03. [P1] PDF rendering can fetch internal URLs outside SafeWebReader
 
-**Implemented on 10 October 2026; runtime acceptance checks pending:** Report HTML is sanitized to a text-formatting allowlist; images, embedded content, raw CSS, and arbitrary attributes are removed. OpenHTMLtoPDF resource access is denied both before and after URI resolution for all protocols, and the external XHTML DTD was removed. Citation links are retained as links only. Backend compilation succeeds; a new loopback/resource-loading regression check has not been run. Repeated rendering/CPU limits remain separate follow-up work.
+**Implemented on 10 October; renderer bypass fixed and verified on 22 October 2026:** Report HTML is sanitized to a text-formatting allowlist. Images, embedded content, raw CSS, and arbitrary attributes are removed, and the external XHTML DTD is absent. A new adversarial check initially recorded ten HTTP requests because the installed OpenHTMLtoPDF 1.0.10 image loader bypasses the access predicates. Resource URI resolution now rejects every URI independently of those predicates. Normal and deliberately unsanitized renderer probes record zero requests, including redirect paths; local stylesheet markers are absent, local images are not embedded, and PDF citation links remain clickable. Repeated-rendering caching and CPU/time limits remain follow-up work.
 
 Evidence: [PdfReportService.java:50](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/service/PdfReportService.java:50), [PdfReportService.java:87](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/service/PdfReportService.java:87).
 
@@ -91,6 +110,8 @@ The build stage uses a JDK image, copies only pom.xml and src, and calls ./mvnw 
 
 ### 07. [P1] Cancel does not stop execution or spending
 
+**Resolved and verified on 22 October 2026:** Worker claim and cancellation/finalization use the same row lock; cancelled queued messages are skipped and duplicate active claims cannot restart work. A scoped execution guard checks persisted cancellation before model/search/page operations and periodically during active page reads. Both model providers are configured for one SDK attempt so hidden retry loops cannot bypass cancellation. Cancellation during planner, reader, and reflection calls stops subsequent calls, page reads, and revision. Returned token/cost usage is retained. Final artifacts and status commit together, cancellation events wait for commit, and stale startup recovery uses a conditional update instead of overwriting terminal rows. Concurrency checks cover either completion or cancellation winning the lock; an actual worker/API/database regression cancels during a simulated reader call, records usage, and performs no subsequent calls. Cancellation is cooperative: already-started network/provider calls may finish or time out and may be billed; usage omitted by a failed provider response cannot be recovered from that response. Worker leases, crash resumption, outbox publication, and PostgreSQL deployment checks remain separate work.
+
 Evidence: [RunService.java:115](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/service/RunService.java:115), [ResearchOrchestrator.java:67](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/agent/ResearchOrchestrator.java:67), [ResearchWorkerConsumer.java:79](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/worker/ResearchWorkerConsumer.java:79).
 
 The API changes the database row and emits CANCELLED, but never calls the orchestrator cancellation method or sends a cancellation signal the worker reads. The worker also starts already-cancelled queued messages and can overwrite cancellation with RUNNING or COMPLETED. Even the orchestrator's local cancellation check only runs between whole stages, not within the reader's page loop or an active model call.
@@ -120,6 +141,8 @@ todayStartOfDay is set at startup and resetForNewDay has no caller or scheduled 
 **Acceptance:** Tests cover day rollover, multiple concurrent workers, crashes after provider usage, and all supported entry points.
 
 ### 10. [P1] Quotes are accepted without checking that the source contains them
+
+**Quote provenance resolved on 22 October 2026:** Empty, invented, and mismatched quotes are excluded before Claim construction. Exact and whitespace-only matching preserve original source spans, submitted quotations, snapshot UUID/hash/URL, normalization version, and UTF-16 offsets. Persistence retains full quotations, and the Claims UI highlights saved evidence. Historical claims remain explicitly without validation metadata. Twenty-six added regressions pass alongside the prior suite. Semantic support, independence, report citations, and enforcement of the requested five-claim maximum remain separate work.
 
 Evidence: [ReaderAgent.java:149](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/agent/ReaderAgent.java:149).
 
@@ -152,6 +175,8 @@ Zero verified and zero unverified claims produces 0.5 confidence. Contradictions
 **Acceptance:** Zero evidence never produces a verified percentage; contradictions and duplicated evidence cannot inflate the result.
 
 ### 13. [P1] Completion is announced before the report is available
+
+**Resolved for the async worker/API path on 22 October 2026 as part of cancellation finalization:** The worker filters terminal events from the orchestrator, persists report/artifacts and terminal state in one transaction, and publishes the actual committed terminal state after that transaction returns. A regression processes the actual worker and immediately reads the report from the completion-event callback. A cancellation that wins finalization publishes no false completion and stores no final database report.
 
 Evidence: [ResearchOrchestrator.java:251](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/agent/ResearchOrchestrator.java:251), [ResearchWorkerConsumer.java:105](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/src/main/java/com/researchagent/worker/ResearchWorkerConsumer.java:105).
 
@@ -215,7 +240,7 @@ isStreaming starts false and every setter sets it false. Nothing sets it true. T
 
 ### 19. [P1] The event connection is recreated on every render and cannot recover missed events
 
-**Resolved on 20 October 2026:** Stabilized `useEventSource` with `useRef` for event handlers (`onMessageRef`, `onTerminalRef`), gating subscription exclusively on `runId` and `active` lifecycle state to prevent connection churn on component renders.
+**Partially implemented on 20 October; reviewed on 22 October 2026:** `useEventSource` uses callback refs and subscriptions depend on `runId`/`active`, addressing render-driven connection churn. However, `onerror` still invokes the terminal callback and closes the connection; reconnect, replay, and missed-event recovery remain unimplemented. This finding stays open for that remaining behavior.
 
 Evidence: [App.tsx:200](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:200), [App.tsx:241](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:241), [App.tsx:280](C:/Users/bhara/OneDrive/Desktop/PEOPLE❤️❤️❤️/me/PROJECTS/Research-Agent/frontend/src/App.tsx:280).
 

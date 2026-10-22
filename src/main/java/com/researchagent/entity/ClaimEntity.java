@@ -11,6 +11,39 @@ import jakarta.persistence.Table;
         @Index(name = "idx_claims_run_id", columnList = "run_id")
 })
 public class ClaimEntity {
+    @Column(name = "source_url", columnDefinition = "TEXT")
+    private String sourceUrl;
+    @Column(name = "submitted_quote", columnDefinition = "TEXT")
+    private String submittedQuote;
+    @Column(name = "evidence_snapshot_id", length = 36)
+    private String evidenceSnapshotId;
+    @Column(name = "evidence_content_hash", length = 64)
+    private String evidenceContentHash;
+    @Column(name = "quote_start")
+    private Integer quoteStart;
+    @Column(name = "quote_end")
+    private Integer quoteEnd;
+    @Column(name = "quote_match_status", length = 32)
+    private String quoteMatchStatus;
+    @Column(name = "quote_normalization_version", length = 32)
+    private String quoteNormalizationVersion;
+
+    public String getSourceUrl() { return sourceUrl; }
+    public void setSourceUrl(String value) { sourceUrl = value; }
+    public String getSubmittedQuote() { return submittedQuote; }
+    public void setSubmittedQuote(String value) { submittedQuote = value; }
+    public String getEvidenceSnapshotId() { return evidenceSnapshotId; }
+    public void setEvidenceSnapshotId(String value) { evidenceSnapshotId = value; }
+    public String getEvidenceContentHash() { return evidenceContentHash; }
+    public void setEvidenceContentHash(String value) { evidenceContentHash = value; }
+    public Integer getQuoteStart() { return quoteStart; }
+    public void setQuoteStart(Integer value) { quoteStart = value; }
+    public Integer getQuoteEnd() { return quoteEnd; }
+    public void setQuoteEnd(Integer value) { quoteEnd = value; }
+    public String getQuoteMatchStatus() { return quoteMatchStatus; }
+    public void setQuoteMatchStatus(String value) { quoteMatchStatus = value; }
+    public String getQuoteNormalizationVersion() { return quoteNormalizationVersion; }
+    public void setQuoteNormalizationVersion(String value) { quoteNormalizationVersion = value; }
 
     @Id
     @Column(name = "id", length = 64, nullable = false)

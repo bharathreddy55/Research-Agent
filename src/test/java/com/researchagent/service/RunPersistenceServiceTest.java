@@ -72,7 +72,7 @@ class RunPersistenceServiceTest {
         existing.setId("run-1");
         existing.setStatus(RunStatus.RUNNING.name());
 
-        when(runRepository.findById("run-1")).thenReturn(Optional.of(existing));
+        when(runRepository.findByIdForUpdate("run-1")).thenReturn(Optional.of(existing));
 
         persistenceService.updateRunStatus("run-1", RunStatus.COMPLETED);
 

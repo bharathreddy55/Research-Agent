@@ -47,6 +47,9 @@ interface SourceEntity {
   domain?: string;
   fetchedOk: boolean;
   fetchError?: string;
+  snapshotId?: string;
+  contentHash?: string;
+  content?: string;
 }
 
 interface ClaimEntity {
@@ -58,6 +61,30 @@ interface ClaimEntity {
   status: string;
   supportingDomains?: string;
   contradictionNotes?: string;
+  evidenceSnapshotId?: string;
+  evidenceContentHash?: string;
+  quoteStart?: number;
+  quoteEnd?: number;
+  quoteMatchStatus?: string;
+}
+
+function QuoteEvidenceView({ claim, sources }: { claim: ClaimEntity; sources: SourceEntity[] }) {
+  if (!claim.quoteMatchStatus) return <p className="mt-2 text-xs text-text-muted">Quotation validation unavailable for this older claim.</p>;
+  const source = sources.find(s => s.snapshotId === claim.evidenceSnapshotId && s.contentHash === claim.evidenceContentHash);
+  const start = claim.quoteStart;
+  const end = claim.quoteEnd;
+  const text = source?.content;
+  if (text == null || start == null || end == null || !Number.isInteger(start) || !Number.isInteger(end)
+    || start < 0 || end <= start || end > text.length || text.slice(start, end) !== claim.exactQuote) {
+    return <p className="mt-2 text-xs text-text-muted">Saved quotation evidence is unavailable.</p>;
+  }
+  return (
+    <details className="mt-2 text-xs text-text-muted">
+      <summary className="cursor-pointer">View quotation in saved source</summary>
+      <p className="my-2">{claim.quoteMatchStatus === 'EXACT' ? 'Exact text match' : 'Whitespace differences only'}. This checks the quotation’s origin; it does not verify the claim.</p>
+      <p className="whitespace-pre-wrap">{text.slice(Math.max(0, start - 160), start)}<mark>{text.slice(start, end)}</mark>{text.slice(end, Math.min(text.length, end + 160))}</p>
+    </details>
+  );
 }
 
 interface ReportResponse {
@@ -580,10 +607,17 @@ function Dashboard() {
                     className="cancel-btn px-4 py-2 bg-accent-red/10 border border-accent-red text-accent-red rounded-lg font-medium hover:bg-accent-red/20 transition-colors duration-200"
                     onClick={handleCancelRun}
                   >
-                    Stop LLM Spend (Cancel)
+                    Cancel research
                   </button>
                 )}
               </div>
+
+              {runData?.status === 'CANCELLED' && (
+                <p role="status" className="text-sm text-text-muted mb-4">
+                  Cancellation requested. A call already in progress may finish and incur a charge.
+                  Final usage may update after that call returns.
+                </p>
+              )}
 
               {/* Step Pipeline Visualization */}
               <div className="pipeline-steps flex items-center justify-between relative">
@@ -780,6 +814,7 @@ function Dashboard() {
                             Corroborated across: <strong className="font-medium">{c.supportingDomains}</strong>
                           </div>
                         )}
+                        <QuoteEvidenceView claim={c} sources={sources} />
                       </div>
                     ))}
                   </div>

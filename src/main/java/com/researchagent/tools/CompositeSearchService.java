@@ -22,6 +22,7 @@ public class CompositeSearchService implements SearchService {
 
     @Override
     public List<SearchResult> search(String query, int maxResults) {
+        com.researchagent.execution.RunControl.checkActive();
         if (tavilySearchService.isConfigured()) {
             List<SearchResult> results = tavilySearchService.search(query, maxResults);
             if (!results.isEmpty()) {
@@ -32,6 +33,7 @@ public class CompositeSearchService implements SearchService {
             log.info("Tavily API not configured. Utilizing fallback search provider for '{}'", query);
         }
 
+        com.researchagent.execution.RunControl.checkActive();
         return fallbackSearchService.search(query, maxResults);
     }
 }

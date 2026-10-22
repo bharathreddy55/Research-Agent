@@ -91,7 +91,7 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
   - [✅] `GET /api/runs`: List user runs with pagination, date, cost, status.
   - [✅] `GET /api/runs/{id}`: Detailed run status, timing, tokens, cost.
   - [✅] `GET /api/runs/{id}/stream`: SSE endpoint streaming live progress events.
-  - [✅] `POST /api/runs/{id}/cancel`: Request cancellation; halts LLM spend immediately.
+  - [x] `POST /api/runs/{id}/cancel`: Persist cancellation; workers skip queued cancelled jobs and check before further model/web operations. Already-started calls may finish and be billed. Terminal transitions and report persistence serialize against cancellation (verified 22 October 2026).
   - [✅] `GET /api/runs/{id}/report`: Returns report Markdown, metadata, and draft version comparison (v1 vs v2) (Audit B8).
   - [✅] `GET /api/runs/{id}/trace`: Returns full step-by-step trace history.
 - [✅] **Redis Pub/Sub to SSE Bridge (Audit A1)**:
@@ -100,7 +100,7 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
 - [✅] **Guardrails & Resilience**:
   - [✅] Rate Limiting (PRD F10 & Audit B7): Redis semaphore limiting to 3 concurrent active runs per user.
   - [✅] Worker Crash Recovery (Audit B5): On worker startup, query database for non-terminal runs (`IN_PROGRESS`), inspect last completed step, and resume execution.
-  - [ ] Security acceptance pending: local BCrypt accounts, session authentication, CSRF, restricted CORS, and per-run ownership implemented on `/api/**`; cross-user and session runtime checks remain to be performed (Audit B2).
+  - [x] Security acceptance verified 22 October 2026: local BCrypt accounts, session authentication, CSRF, restricted CORS, two-user ownership checks on every run endpoint, stream revocation on logout/identity change/session invalidation, and database filtering before pagination (Audit B2). Browser/deployment checks remain separate.
 
 ---
 

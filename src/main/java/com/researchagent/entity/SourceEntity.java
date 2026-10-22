@@ -13,18 +13,23 @@ import jakarta.persistence.Table;
         @Index(name = "idx_sources_run_id", columnList = "run_id")
 })
 public class SourceEntity {
+    @Column(name = "snapshot_id", length = 36, unique = true, updatable = false)
+    private String snapshotId;
+
+    public String getSnapshotId() { return snapshotId; }
+    public void setSnapshotId(String snapshotId) { this.snapshotId = snapshotId; }
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "run_id", length = 64, nullable = false)
+    @Column(name = "run_id", length = 64, nullable = false, updatable = false)
     private String runId;
 
-    @Column(name = "source_number", nullable = false)
+    @Column(name = "source_number", nullable = false, updatable = false)
     private int sourceNumber; // 1-indexed citation ID
 
-    @Column(name = "url", columnDefinition = "TEXT", nullable = false)
+    @Column(name = "url", columnDefinition = "TEXT", nullable = false, updatable = false)
     private String url;
 
     @Column(name = "title", length = 512)
@@ -36,10 +41,10 @@ public class SourceEntity {
     @Column(name = "domain", length = 128)
     private String domain;
 
-    @Column(name = "content", columnDefinition = "TEXT")
+    @Column(name = "content", columnDefinition = "TEXT", updatable = false)
     private String content;
 
-    @Column(name = "content_hash", length = 64)
+    @Column(name = "content_hash", length = 64, updatable = false)
     private String contentHash;
 
     @Column(name = "fetched_ok")

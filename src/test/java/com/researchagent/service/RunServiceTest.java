@@ -45,6 +45,13 @@ class RunServiceTest {
         final List<RunEntity> saves = new ArrayList<>();
 
         @Override public Optional<RunEntity> findById(String id) { return Optional.ofNullable(store.get(id)); }
+        @Override public Optional<RunEntity> findByIdForUpdate(String id) { return findById(id); }
+        @Override public Optional<String> findStatusById(String id) { return findById(id).map(RunEntity::getStatus); }
+        @Override public int failIfActive(String id, String reason, Instant finishedAt) {
+            RunEntity run = store.get(id);
+            if (run == null || List.of("CANCELLED", "COMPLETED", "FAILED").contains(run.getStatus())) return 0;
+            run.setStatus("FAILED"); run.setFailureReason(reason); run.setFinishedAt(finishedAt); return 1;
+        }
         @Override public Optional<RunEntity> findByIdAndUserId(String id, String userId) {
             return findById(id).filter(run -> userId.equals(run.getUserId()));
         }

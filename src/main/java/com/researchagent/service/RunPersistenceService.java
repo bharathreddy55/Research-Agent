@@ -201,6 +201,15 @@ public class RunPersistenceService {
         for (Source s : sources) {
             SourceEntity entity = new SourceEntity();
             entity.setSnapshotId(s.getSnapshotId());
+            entity.setResolvedUrl(s.getResolvedUrl());
+            if (s.getProvenance() != null) {
+                var provenance = s.getProvenance();
+                entity.setHostname(provenance.hostname());
+                entity.setRegistrableDomain(provenance.registrableDomain());
+                entity.setPublisherGroup(provenance.publisherGroup());
+                entity.setEvidenceFamilyId(provenance.evidenceFamilyId());
+                entity.setProvenancePolicy(provenance.policyVersion());
+            }
             entity.setRunId(runId);
             entity.setSourceNumber(s.getId());        // 1-indexed citation id
             entity.setUrl(s.getUrl());
@@ -231,6 +240,9 @@ public class RunPersistenceService {
             entity.setStatement(c.getStatement());
             entity.setExactQuote(c.getExactQuote());
             entity.setSourceUrl(c.getSourceUrl());
+            entity.setIndependenceStatus(c.getIndependenceStatus());
+            entity.setEvidenceFamilyCount(c.getEvidenceFamilyCount());
+            entity.setIndependenceNotes(c.getIndependenceNotes());
             if (c.getQuoteEvidence() != null) {
                 var evidence = c.getQuoteEvidence();
                 entity.setSubmittedQuote(evidence.submittedQuote());
@@ -284,6 +296,9 @@ public class RunPersistenceService {
         entity.setQuery(report.getQuery() != null ? report.getQuery() : "");
         entity.setTitle(truncate(report.getTitle(), 512));
         entity.setMarkdownContent(report.getMarkdownContent());
+        entity.setEvidencePolicy(report.getEvidencePolicy());
+        entity.setEvidenceManifestJson(report.getEvidenceManifestJson());
+        entity.setReportDraftJson(report.getReportDraftJson());
         entity.setConfidenceScore(report.getConfidenceScore());
         entity.setTotalSources(report.getTotalSources());
         entity.setVerifiedClaimsCount(report.getVerifiedClaimsCount());

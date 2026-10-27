@@ -32,7 +32,7 @@ Each sprint delivers a testable, verified milestone of the PRD requirements.
   - [x] `PlannerAgent`: Query decomposition into 3–5 sub-questions with search queries, JSON schema validation, and 1-retry fallback.
   - [x] `SearcherAgent`: Web search invocation (Tavily + fallback), URL deduplication, and depth page limits (6/10/15).
   - [x] `ReaderAgent`: Web page extraction, prompt-injection defense (`<untrusted_web_content>` wrapping), factual claim extraction with quotes.
-  - [x] `VerifierAgent`: Cross-domain corroboration rule ($\ge 2$ independent domains = `VERIFIED`, single-source = `UNVERIFIED`, contradictions flagged).
+  - [ ] `VerifierAgent`: Source-family grouping and direct candidate links implemented; independent-source confirmation remains unavailable and regression acceptance is pending. Different domains do not automatically award `VERIFIED`.
   - [x] `WriterAgent`: Structured Markdown authoring with executive summary and inline citations (`[n]`).
   - [x] `ReflectionCriticAgent`: Completeness critique with **hard cap of exactly 1 revision pass**.
   - [x] `CitationValidator` (Audit Fix A3): Post-write regex validator stripping hallucinated citations not in sources and flagging dead URLs (`[n†dead-source]`).

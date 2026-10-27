@@ -13,6 +13,30 @@ import jakarta.persistence.Table;
         @Index(name = "idx_sources_run_id", columnList = "run_id")
 })
 public class SourceEntity {
+    @Column(name = "resolved_url", columnDefinition = "TEXT", updatable = false)
+    private String resolvedUrl;
+    @Column(name = "hostname", length = 253, updatable = false)
+    private String hostname;
+    @Column(name = "registrable_domain", length = 253, updatable = false)
+    private String registrableDomain;
+    @Column(name = "publisher_group", length = 128, updatable = false)
+    private String publisherGroup;
+    @Column(name = "evidence_family_id", length = 64, updatable = false)
+    private String evidenceFamilyId;
+    @Column(name = "provenance_policy", length = 32, updatable = false)
+    private String provenancePolicy;
+    public String getResolvedUrl() { return resolvedUrl; }
+    public void setResolvedUrl(String value) { resolvedUrl = value; }
+    public String getHostname() { return hostname; }
+    public void setHostname(String value) { hostname = value; }
+    public String getRegistrableDomain() { return registrableDomain; }
+    public void setRegistrableDomain(String value) { registrableDomain = value; }
+    public String getPublisherGroup() { return publisherGroup; }
+    public void setPublisherGroup(String value) { publisherGroup = value; }
+    public String getEvidenceFamilyId() { return evidenceFamilyId; }
+    public void setEvidenceFamilyId(String value) { evidenceFamilyId = value; }
+    public String getProvenancePolicy() { return provenancePolicy; }
+    public void setProvenancePolicy(String value) { provenancePolicy = value; }
     @Column(name = "snapshot_id", length = 36, unique = true, updatable = false)
     private String snapshotId;
 

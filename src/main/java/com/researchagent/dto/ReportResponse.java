@@ -3,6 +3,15 @@ package com.researchagent.dto;
 import java.time.Instant;
 
 public class ReportResponse {
+    private String evidencePolicy;
+    private String evidenceManifestJson;
+    private String reportDraftJson;
+    public String getEvidencePolicy() { return evidencePolicy; }
+    public void setEvidencePolicy(String value) { evidencePolicy = value; }
+    public String getEvidenceManifestJson() { return evidenceManifestJson; }
+    public void setEvidenceManifestJson(String value) { evidenceManifestJson = value; }
+    public String getReportDraftJson() { return reportDraftJson; }
+    public void setReportDraftJson(String value) { reportDraftJson = value; }
     private String id;
     private String runId;
     private String query;

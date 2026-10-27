@@ -3,6 +3,9 @@ package com.researchagent.agent;
 import com.researchagent.model.AgentType;
 import com.researchagent.model.Source;
 import com.researchagent.model.StepTrace;
+import com.researchagent.model.Claim;
+import com.researchagent.evidence.GroundedReportRenderer;
+import com.researchagent.evidence.ReportDraft;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -28,6 +31,7 @@ public class CitationValidator {
         private final Set<Integer> hallucinatedCitationIds;
         private final Set<Integer> deadUrlCitationIds;
         private final StepTrace stepTrace;
+        private final GroundedReportRenderer.Rendered groundedReport;
 
         public CitationValidationResult(
                 String sanitizedMarkdown,
@@ -35,11 +39,18 @@ public class CitationValidator {
                 Set<Integer> hallucinatedCitationIds,
                 Set<Integer> deadUrlCitationIds,
                 StepTrace stepTrace) {
+            this(sanitizedMarkdown, validCitationIds, hallucinatedCitationIds, deadUrlCitationIds, stepTrace, null);
+        }
+
+        public CitationValidationResult(String sanitizedMarkdown, Set<Integer> validCitationIds,
+                Set<Integer> hallucinatedCitationIds, Set<Integer> deadUrlCitationIds, StepTrace stepTrace,
+                GroundedReportRenderer.Rendered groundedReport) {
             this.sanitizedMarkdown = sanitizedMarkdown;
             this.validCitationIds = validCitationIds;
             this.hallucinatedCitationIds = hallucinatedCitationIds;
             this.deadUrlCitationIds = deadUrlCitationIds;
             this.stepTrace = stepTrace;
+            this.groundedReport = groundedReport;
         }
 
         public String getSanitizedMarkdown() { return sanitizedMarkdown; }
@@ -47,11 +58,14 @@ public class CitationValidator {
         public Set<Integer> getHallucinatedCitationIds() { return hallucinatedCitationIds; }
         public Set<Integer> getDeadUrlCitationIds() { return deadUrlCitationIds; }
         public StepTrace getStepTrace() { return stepTrace; }
+        public GroundedReportRenderer.Rendered getGroundedReport() { return groundedReport; }
         public boolean hasAnomalies() {
             return !hallucinatedCitationIds.isEmpty() || !deadUrlCitationIds.isEmpty();
         }
     }
 
+    /** Structural-only compatibility helper. Never establishes factual support or publishes new reports. */
+    @Deprecated
     public CitationValidationResult validateAndSanitize(
             String runId,
             int seq,
@@ -124,8 +138,8 @@ public class CitationValidator {
                 .runId(runId)
                 .seq(seq)
                 .agent(AgentType.CITATION_VALIDATOR)
-                .action(actionSummary)
-                .prompt("Verified all [n] inline citations against sources table (" + sources.size() + " total sources)")
+                .action("Structural citation check only: " + actionSummary)
+                .prompt("Checked [n] IDs against " + sources.size() + " sources only. Claim support and citation relevance were not assessed.")
                 .response(String.format("Passed: %s | Stripped: %s | Dead-URL: %s", validIds, hallucinatedIds, deadUrlIds))
                 .tokensIn(0)
                 .tokensOut(0)
@@ -134,5 +148,21 @@ public class CitationValidator {
                 .build();
 
         return new CitationValidationResult(sanitized, validIds, hallucinatedIds, deadUrlIds, trace);
+    }
+
+    /** Publication gate: factual excerpts and citation numbers are generated only from checked evidence. */
+    public CitationValidationResult validateAndRender(String runId, int seq, ReportDraft draft,
+                                                       List<Claim> claims, List<Source> sources) {
+        long start = System.currentTimeMillis();
+        var rendered = new GroundedReportRenderer().render(runId, draft, claims, sources);
+        Set<Integer> cited = rendered.references().stream().map(GroundedReportRenderer.EvidenceReference::sourceNumber)
+                .collect(Collectors.toCollection(java.util.TreeSet::new));
+        StepTrace trace = StepTrace.builder().id(UUID.randomUUID().toString()).runId(runId).seq(seq)
+                .agent(AgentType.CITATION_VALIDATOR)
+                .action("Rendered " + rendered.references().size() + " checked evidence references; " + cited.size() + " cited sources")
+                .prompt("Validated selected claim IDs, snapshot hashes, original quote spans and source bindings")
+                .response("Policy: " + GroundedReportRenderer.POLICY + "; quotation provenance checked; semantic support unassessed")
+                .durationMs(System.currentTimeMillis() - start).build();
+        return new CitationValidationResult(rendered.markdown(), cited, Set.of(), Set.of(), trace, rendered);
     }
 }

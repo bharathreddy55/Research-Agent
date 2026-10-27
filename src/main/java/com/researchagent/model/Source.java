@@ -1,6 +1,12 @@
 package com.researchagent.model;
 
 public class Source {
+    private com.researchagent.evidence.SourceProvenance provenance;
+    private String resolvedUrl;
+    public com.researchagent.evidence.SourceProvenance getProvenance() { return provenance; }
+    public void setProvenance(com.researchagent.evidence.SourceProvenance value) { provenance = value; }
+    public String getResolvedUrl() { return resolvedUrl; }
+    public void setResolvedUrl(String value) { resolvedUrl = value; }
     private String snapshotId;
     public String getSnapshotId() { return snapshotId; }
     public void setSnapshotId(String snapshotId) { this.snapshotId = snapshotId; }

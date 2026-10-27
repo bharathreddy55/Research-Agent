@@ -23,7 +23,7 @@ P1 means fix before a shared or paid pilot. P2 means a substantive correctness, 
 
 Validation: **121 offline backend tests passed, zero failures/errors**, excluding the live-web `ResearchBenchmarkEvalTest`. This retains the previous 95 checks and adds 26 quotation matching/reader/persistence cases. Latest logs are in `target/quote-validation-regression.log` and `target/quote-validation-frontend-build.log`. These checks use isolated test accounts/data and do not use the user's credentials, paid models, or deployed infrastructure. Database checks use H2; PostgreSQL/Docker and browser acceptance have not been performed.
 
-The next requested priority is **build-review comment 2: independent source corroboration**. Budgeting and model pricing are outside the user's current scope. The original observations below are historical; resolution notes and the current status above take precedence.
+**Build-review comment 3 implemented in the working tree:** model-authored report prose/citations are replaced with structured claim-ID selection and application-rendered source quotes, citations, and manifest after evidence-chain validation. Interpretations remain explicitly unassessed. Backend compilation and frontend production build pass; regression acceptance is pending authorization. Comment 2 source-family grouping is implemented but remains untested and true independence unconfirmed. The 121-test result above predates both changes. Budgeting and model pricing are outside the user's current scope. The original observations below are historical; resolution notes and the current status above take precedence.
 
 ## Original validation performed on 10 October 2026
 

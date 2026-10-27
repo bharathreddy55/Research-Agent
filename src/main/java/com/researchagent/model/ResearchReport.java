@@ -5,6 +5,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ResearchReport {
+    private String evidencePolicy;
+    private String evidenceManifestJson;
+    private String reportDraftJson;
+    public String getEvidencePolicy() { return evidencePolicy; }
+    public void setEvidencePolicy(String value) { evidencePolicy = value; }
+    public String getEvidenceManifestJson() { return evidenceManifestJson; }
+    public void setEvidenceManifestJson(String value) { evidenceManifestJson = value; }
+    public String getReportDraftJson() { return reportDraftJson; }
+    public void setReportDraftJson(String value) { reportDraftJson = value; }
     private String id;
     private String runId;
     private String query;

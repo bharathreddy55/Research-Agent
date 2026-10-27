@@ -4,6 +4,15 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class Claim {
+    private String independenceStatus;
+    private Integer evidenceFamilyCount;
+    private String independenceNotes;
+    public String getIndependenceStatus() { return independenceStatus; }
+    public void setIndependenceStatus(String value) { independenceStatus = value; }
+    public Integer getEvidenceFamilyCount() { return evidenceFamilyCount; }
+    public void setEvidenceFamilyCount(Integer value) { evidenceFamilyCount = value; }
+    public String getIndependenceNotes() { return independenceNotes; }
+    public void setIndependenceNotes(String value) { independenceNotes = value; }
     private com.researchagent.evidence.QuoteEvidence quoteEvidence;
 
     public com.researchagent.evidence.QuoteEvidence getQuoteEvidence() { return quoteEvidence; }

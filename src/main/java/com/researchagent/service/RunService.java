@@ -236,6 +236,9 @@ public class RunService {
         resp.setQuery(entity.getQuery());
         resp.setTitle(entity.getTitle());
         resp.setMarkdownContent(entity.getMarkdownContent());
+        resp.setEvidencePolicy(entity.getEvidencePolicy());
+        resp.setEvidenceManifestJson(entity.getEvidenceManifestJson());
+        resp.setReportDraftJson(entity.getReportDraftJson());
         resp.setPdfPath(entity.getPdfPath());
         resp.setVersion(entity.getVersion());
         resp.setConfidenceScore(entity.getConfidenceScore());

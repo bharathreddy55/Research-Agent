@@ -1,6 +1,6 @@
 # Solutions to the nine build-review comments
 
-Recommendations based on the current repository, 22 October 2026. Comment 1 is now implemented with regression coverage; comments 2–9 remain an implementation plan. Existing authentication, ownership checks, PDF isolation, cancellation, and terminal commit ordering must be preserved. Budgeting and model pricing are outside scope.
+Recommendations based on the current repository, updated 27 October 2026. Comments 1 and 4 have focused regression coverage. Comment 2's source grouping is implemented with regression acceptance pending. Comment 3's grounded report path is implemented; semantic support assessment remains open. Comments 5–9 remain a plan. Existing authentication, ownership checks, PDF isolation, cancellation, and terminal commit ordering must be preserved. Budgeting and model pricing are outside scope.
 
 ## 1. Unchecked quotations — ReaderAgent
 
@@ -17,6 +17,8 @@ Quote matching establishes provenance. It does not establish that the quote supp
 
 ## 2. Hostnames mistaken for independent evidence — VerifierAgent
 
+**Implementation present; regression acceptance pending:** `source-families-v1` uses Guava PSL boundaries, optional operator publisher groups, normalized duplicate text, and five-word-shingle overlap. Final URL and computed source metadata are persisted. Verifier links must reference quote-grounded snapshots; strict field/index checks and direct support edges replace recursive hostname merging. Proposed conflicts override support edges. Claims retain candidate family counts and uncertainty labels; different hosts never automatically award VERIFIED. The Claims view and writer instructions expose these limits. Positive independence confirmation is deliberately unavailable without a trustworthy separate assessment. Copy detection remains heuristic and shared ownership/study origin can be unknown. Prior verifier tests expecting hostname-only VERIFIED require replacement after test authorization.
+
 Add source provenance fields: hostname, registrable domain, publisher group when known, content hash, and evidence-family ID. Use a maintained Public Suffix List implementation to determine registrable domains; splitting on the final two labels fails for domains under suffixes such as `co.uk`. The [Public Suffix List documentation](https://publicsuffix.org/learn/) explains these boundaries.
 
 Group exact copies by content hash and detect near-duplicate or syndicated evidence. Count one evidence family once, even when copied across hosts. Treat the model's clusters as proposals and validate referenced claim IDs, source spans, contradictions, and provenance in application code. Domain normalization alone does not prove publisher or editorial independence. Label uncertain independence explicitly instead of automatically awarding VERIFIED.
@@ -24,6 +26,8 @@ Group exact copies by content hash and detect near-duplicate or syndicated evide
 **Acceptance:** subdomains and copied articles do not manufacture corroboration; two independently produced sources can support the same assertion; contradictory evidence remains visible.
 
 ## 3. Citation IDs mistaken for factual support — CitationValidator / WriterAgent
+
+**Implemented in the working tree:** writer and reflection stages emit strict claim-ID selection JSON only. `ClaimEvidenceIndex` revalidates run/source/snapshot/hash/quote/version bindings. `GroundedReportRenderer` generates quoted excerpts, source numbers, bibliography, and a persisted manifest/draft. Model statements are labelled unassessed interpretations without inheriting the quote citation; proposed contradictions remain labelled. The legacy structural sanitizer trace no longer claims to have verified support. This establishes citation origin and blocks invented prose from receiving model-chosen citations; semantic entailment, source reliability, and truth remain unassessed. Build checks pass; no regression tests were authorized for this turn.
 
 Have the writer produce a structured draft whose factual statements reference accepted claim IDs. Generate visible citation numbers from the referenced evidence in application code. Do not let the model freely choose source numbers.
 
@@ -34,6 +38,8 @@ Make ReflectionCriticAgent preserve these references and revalidate every revise
 **Acceptance:** a live unrelated citation is rejected; invented facts introduced during writing or revision cannot inherit a legitimate citation; every displayed factual finding exposes its evidence.
 
 ## 4. Invented search fallback — SearchService implementations
+
+**Implemented 27 October 2026:** The HTML fallback accepts only actual HTTP(S) result links and returns no synthetic Wikipedia hit or made-up relevance score. `SearchOutcome` distinguishes `EMPTY`, `UNAVAILABLE`, `SUCCESS`, and composite `PARTIAL`; search traces retain each provider attempt. `SEARCH_ALLOW_SECONDARY_FALLBACK` controls whether Tavily can fall through to DuckDuckGo HTML. A provider outage with no discovered source fails the run; reports based on discovered sources after an outage carry a partial-coverage label. Eight focused offline regression tests pass. Live-provider and browser behavior have not been checked.
 
 Remove the fabricated Wikipedia result. Introduce `SearchOutcome` carrying results, provider, status (`SUCCESS`, `EMPTY`, `UNAVAILABLE`), and a safe diagnostic. An empty result and a failed provider request must remain distinguishable.
 
@@ -95,7 +101,7 @@ Record dataset version, prompts, model configuration, source snapshots, outputs,
 
 ## Recommended delivery sequence
 
-1. **Immediate:** remove invented fallback results and correct unsupported documentation claims (4, 9).
+1. **Immediate:** correct unsupported documentation claims (9).
 2. **Evidence foundation:** quote validation and immutable source snapshots (1).
 3. **Research integrity:** provenance-aware corroboration, structured writing, and citation support checks (2, 3).
 4. **Execution reliability:** outbox delivery and worker leases/checkpoints (5, 6), designed together.

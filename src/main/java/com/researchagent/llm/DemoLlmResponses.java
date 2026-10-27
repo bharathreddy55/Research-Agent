@@ -21,6 +21,9 @@ final class DemoLlmResponses {
         if (prompt.contains("VERIFIER")) {
             return "{\"clusters\": []}";
         }
+        if (prompt.contains("CLAIM_SELECTION_DRAFT")) {
+            return "{\"schemaVersion\":\"claim-selections-v1\",\"summaryClaimIds\":[],\"findingClaimIds\":[]}";
+        }
         if (prompt.contains("REFLECTION")) {
             return """
                     {"needsRevision": false, "critique": "Demo content contains no real research findings."}

@@ -50,6 +50,9 @@ interface SourceEntity {
   snapshotId?: string;
   contentHash?: string;
   content?: string;
+  registrableDomain?: string;
+  publisherGroup?: string;
+  evidenceFamilyId?: string;
 }
 
 interface ClaimEntity {
@@ -66,6 +69,9 @@ interface ClaimEntity {
   quoteStart?: number;
   quoteEnd?: number;
   quoteMatchStatus?: string;
+  independenceStatus?: string;
+  evidenceFamilyCount?: number;
+  independenceNotes?: string;
 }
 
 function QuoteEvidenceView({ claim, sources }: { claim: ClaimEntity; sources: SourceEntity[] }) {
@@ -785,6 +791,10 @@ function Dashboard() {
                           {s.title || s.url}
                         </a>
                         <p className="source-snippet text-xs text-text-muted">{s.snippet}</p>
+                        {s.evidenceFamilyId && <p className="mt-2 text-xs text-text-muted">
+                          Site: {s.registrableDomain ?? 'unknown'}{s.publisherGroup ? ` · Publisher group: ${s.publisherGroup}` : ''}<br />
+                          Evidence group: {s.evidenceFamilyId}
+                        </p>}
                       </div>
                     ))}
                   </div>
@@ -811,10 +821,13 @@ function Dashboard() {
                         )}
                         {c.supportingDomains && (
                           <div className="supporting-domains mt-2 text-xs font-medium text-text-muted">
-                            Corroborated across: <strong className="font-medium">{c.supportingDomains}</strong>
+                            Candidate source hosts: <strong className="font-medium">{c.supportingDomains}</strong>
                           </div>
                         )}
                         <QuoteEvidenceView claim={c} sources={sources} />
+                        <p className="mt-2 text-xs text-text-muted">
+                          {c.independenceStatus ? `Evidence groups: ${c.evidenceFamilyCount ?? 0}. ${c.independenceNotes ?? 'Independence unconfirmed.'}` : 'Source independence has not been assessed for this older claim.'}
+                        </p>
                       </div>
                     ))}
                   </div>

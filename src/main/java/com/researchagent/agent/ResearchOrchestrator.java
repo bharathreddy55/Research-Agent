@@ -145,7 +145,10 @@ public class ResearchOrchestrator {
             run.setSources(sources);
             run.getSteps().add(searchResult.getStepTrace());
             emitEvent(listener, runId, RunStatus.SEARCHING, AgentType.SEARCHER,
-                    "Searcher: Discovered " + sources.size() + " candidate URLs across independent domains", budgetState);
+                    "Searcher: " + searchResult.getStatus() + "; discovered " + sources.size() + " candidate URLs", budgetState);
+            if (sources.isEmpty() && searchResult.getStatus() == com.researchagent.tools.SearchOutcome.Status.UNAVAILABLE) {
+                throw new IllegalStateException("Search providers unavailable; no research evidence could be collected");
+            }
 
             // ==========================================
             // Step 3: READER
@@ -167,15 +170,15 @@ public class ResearchOrchestrator {
             // ==========================================
             if (checkCancellation(run, listener, budgetState)) return run;
             run.setStatus(RunStatus.VERIFYING);
-            emitEvent(listener, runId, RunStatus.VERIFYING, AgentType.VERIFIER, "Verifier: Cross-referencing claims across independent domains...", budgetState);
+            emitEvent(listener, runId, RunStatus.VERIFYING, AgentType.VERIFIER, "Verifier: Comparing claims and grouping potentially shared evidence...", budgetState);
 
-            VerifierAgent.VerifierResult verifierResult = verifierAgent.verifyClaims(runId, seq++, extractedClaims, budgetState);
+            VerifierAgent.VerifierResult verifierResult = verifierAgent.verifyClaims(runId, seq++, extractedClaims, sources, budgetState);
             run.getSteps().add(verifierResult.getStepTrace());
             List<Claim> verifiedClaims = verifierResult.getVerifiedClaims();
             List<Claim> unverifiedClaims = verifierResult.getUnverifiedClaims();
             List<Claim> contradictoryClaims = verifierResult.getContradictoryClaims();
             emitEvent(listener, runId, RunStatus.VERIFYING, AgentType.VERIFIER,
-                    String.format("Verifier: %d claims VERIFIED (≥2 domains), %d UNVERIFIED (single-source), %d CONTRADICTIONS",
+                    String.format("Verifier: %d verified claims, %d unverified claims (independence unconfirmed), %d proposed contradictions",
                             verifiedClaims.size(), unverifiedClaims.size(), contradictoryClaims.size()), budgetState);
 
             // ==========================================
@@ -183,13 +186,12 @@ public class ResearchOrchestrator {
             // ==========================================
             if (checkCancellation(run, listener, budgetState)) return run;
             run.setStatus(RunStatus.WRITING);
-            emitEvent(listener, runId, RunStatus.WRITING, AgentType.WRITER, "Writer: Drafting structured research report with citations...", budgetState);
+            emitEvent(listener, runId, RunStatus.WRITING, AgentType.WRITER, "Writer: Selecting relevant saved evidence for the report...", budgetState);
 
             WriterAgent.WriterResult writerResult = writerAgent.writeReport(
                     runId, seq++, query, plan, verifiedClaims, unverifiedClaims, contradictoryClaims, sources, budgetState);
             run.getSteps().add(writerResult.getStepTrace());
-            String initialDraft = writerResult.getMarkdown();
-            emitEvent(listener, runId, RunStatus.WRITING, AgentType.WRITER, "Writer: Initial draft complete with executive summary and inline citations", budgetState);
+            emitEvent(listener, runId, RunStatus.WRITING, AgentType.WRITER, "Writer: Evidence selection complete; quotations and citations rendered from saved sources", budgetState);
 
             // ==========================================
             // Step 6: REFLECTION CRITIC
@@ -199,9 +201,8 @@ public class ResearchOrchestrator {
             emitEvent(listener, runId, RunStatus.REFLECTING, AgentType.REFLECTION_CRITIC, "Reflection Critic: Evaluating draft completeness and citation density...", budgetState);
 
             ReflectionCriticAgent.ReflectionResult reflectionResult = reflectionCriticAgent.reflectAndRevise(
-                    runId, seq++, query, plan, initialDraft, sources, budgetState);
+                    runId, seq++, query, plan, writerResult.getDraft(), extractedClaims, sources, budgetState);
             run.getSteps().add(reflectionResult.getStepTrace());
-            String draftToValidate = reflectionResult.getFinalMarkdown();
             int reportVersion = reflectionResult.getVersion();
             emitEvent(listener, runId, RunStatus.REFLECTING, AgentType.REFLECTION_CRITIC,
                     "Reflection Critic: Evaluated draft (Version " + reportVersion + " finalized, revision triggered: " + reflectionResult.isRevisionTriggered() + ")", budgetState);
@@ -213,13 +214,17 @@ public class ResearchOrchestrator {
             run.setStatus(RunStatus.VALIDATING_CITATIONS);
             emitEvent(listener, runId, RunStatus.VALIDATING_CITATIONS, AgentType.CITATION_VALIDATOR, "Citation Validator: Auditing citations against fetched sources...", budgetState);
 
-            CitationValidator.CitationValidationResult citationResult = citationValidator.validateAndSanitize(
-                    runId, seq++, draftToValidate, sources);
+            CitationValidator.CitationValidationResult citationResult = citationValidator.validateAndRender(
+                    runId, seq++, reflectionResult.getDraft(), extractedClaims, sources);
             run.getSteps().add(citationResult.getStepTrace());
             String finalMarkdown = citationResult.getSanitizedMarkdown();
+            if (searchResult.getStatus() == com.researchagent.tools.SearchOutcome.Status.PARTIAL) {
+                finalMarkdown = "> **Partial search coverage.** At least one search provider was unavailable; this report uses sources discovered by an available provider. Citations require fetched evidence.\n\n"
+                        + finalMarkdown;
+            }
             emitEvent(listener, runId, RunStatus.VALIDATING_CITATIONS, AgentType.CITATION_VALIDATOR,
-                    String.format("Citation Validator: %d valid citations confirmed, %d hallucinated stripped",
-                            citationResult.getValidCitationIds().size(), citationResult.getHallucinatedCitationIds().size()), budgetState);
+                    "Citation Validator: Checked quotation provenance for " + citationResult.getValidCitationIds().size()
+                            + " cited sources; interpretation support remains unassessed", budgetState);
 
             // ==========================================
             // Finalize Report & Metrics
@@ -235,7 +240,7 @@ public class ResearchOrchestrator {
                     .runId(runId)
                     .query(query)
                     .title(reportTitle)
-                    .executiveSummary(writerResult.getExecutiveSummary())
+                    .executiveSummary(citationResult.getGroundedReport().executiveSummary())
                     .markdownContent(finalMarkdown)
                     .pdfPath(null) // populated in Phase 4
                     .version(reportVersion)
@@ -249,6 +254,9 @@ public class ResearchOrchestrator {
                     .build();
 
             run.setReport(finalReport);
+            finalReport.setEvidencePolicy(com.researchagent.evidence.GroundedReportRenderer.POLICY);
+            finalReport.setEvidenceManifestJson(citationResult.getGroundedReport().manifestJson());
+            finalReport.setReportDraftJson(citationResult.getGroundedReport().draftJson());
             run.setStatus(RunStatus.COMPLETED);
             run.setFinishedAt(Instant.now());
             run.setCostPaise(budgetState.getTotalCostPaise());

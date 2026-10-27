@@ -85,6 +85,7 @@ public class ReaderAgent {
                 source.setTitle(page.getTitle());
             }
             source.setContent(page.getCleanText());
+            source.setResolvedUrl(page.getUrl());
             EvidenceValidator.PreparedSource evidence = evidenceValidator.prepare(page.getCleanText());
             source.setContentHash(evidence.contentHash());
             source.setSnapshotId(UUID.randomUUID().toString());

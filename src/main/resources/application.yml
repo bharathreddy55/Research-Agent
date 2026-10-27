@@ -55,6 +55,8 @@ spring:
       timeout: 2000ms
 
 research-agent:
+  evidence:
+    publisher-groups-json: ${EVIDENCE_PUBLISHER_GROUPS_JSON:{}}
   auth:
     users-json: ${AUTH_USERS_JSON:}
     allowed-origins: ${AUTH_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
@@ -70,6 +72,7 @@ research-agent:
       temperature: 0.2
   search:
     provider: ${SEARCH_PROVIDER:tavily} # 'tavily' or 'fallback'
+    allow-secondary-fallback: ${SEARCH_ALLOW_SECONDARY_FALLBACK:true}
     tavily-api-key: ${TAVILY_API_KEY:}
     timeout-seconds: 15
   limits:

@@ -45,10 +45,15 @@ public class TavilySearchService implements SearchService {
 
     @Override
     public List<SearchResult> search(String query, int maxResults) {
+        return searchOutcome(query, maxResults).results();
+    }
+
+    @Override
+    public SearchOutcome searchOutcome(String query, int maxResults) {
         com.researchagent.execution.RunControl.checkActive();
         if (!isConfigured()) {
-            log.warn("Tavily API key is not configured. Returning empty results.");
-            return List.of();
+            return SearchOutcome.provider("Tavily", List.of(), SearchOutcome.Status.UNAVAILABLE,
+                    "Provider not configured");
         }
 
         try {
@@ -72,16 +77,20 @@ public class TavilySearchService implements SearchService {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
             if (response.statusCode() != 200) {
-                log.warn("Tavily search returned HTTP {}: {}", response.statusCode(), response.body());
-                return List.of();
+                log.warn("Tavily search returned HTTP {}", response.statusCode());
+                return SearchOutcome.provider("Tavily", List.of(), SearchOutcome.Status.UNAVAILABLE,
+                        "Provider returned HTTP " + response.statusCode());
             }
 
             JsonNode root = objectMapper.readTree(response.body());
+            if (root == null || !root.path("results").isArray()) {
+                return SearchOutcome.provider("Tavily", List.of(), SearchOutcome.Status.UNAVAILABLE,
+                        "Provider response lacked a results array");
+            }
             JsonNode resultsNode = root.path("results");
             List<SearchResult> results = new ArrayList<>();
 
-            if (resultsNode.isArray()) {
-                for (JsonNode item : resultsNode) {
+            for (JsonNode item : resultsNode) {
                     String title = item.path("title").asText("");
                     String url = item.path("url").asText("");
                     String content = item.path("content").asText("");
@@ -96,14 +105,21 @@ public class TavilySearchService implements SearchService {
                                 .score(score)
                                 .build());
                     }
-                }
             }
 
             log.info("Tavily search for '{}' returned {} results", query, results.size());
-            return results;
+            return SearchOutcome.provider("Tavily", results, SearchOutcome.Status.EMPTY,
+                    results.isEmpty() ? "No search results" : "");
+        } catch (com.researchagent.execution.RunCancelledException e) {
+            throw e;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return SearchOutcome.provider("Tavily", List.of(), SearchOutcome.Status.UNAVAILABLE,
+                    "Provider request interrupted");
         } catch (Exception e) {
-            log.error("Error executing Tavily search for '{}': {}", query, e.getMessage());
-            return List.of();
+            log.warn("Tavily search unavailable: {}", e.getClass().getSimpleName());
+            return SearchOutcome.provider("Tavily", List.of(), SearchOutcome.Status.UNAVAILABLE,
+                    "Provider request failed: " + e.getClass().getSimpleName());
         }
     }
 }

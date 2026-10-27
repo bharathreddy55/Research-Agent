@@ -11,6 +11,18 @@ import jakarta.persistence.Table;
         @Index(name = "idx_claims_run_id", columnList = "run_id")
 })
 public class ClaimEntity {
+    @Column(name = "independence_status", length = 40)
+    private String independenceStatus;
+    @Column(name = "evidence_family_count")
+    private Integer evidenceFamilyCount;
+    @Column(name = "independence_notes", columnDefinition = "TEXT")
+    private String independenceNotes;
+    public String getIndependenceStatus() { return independenceStatus; }
+    public void setIndependenceStatus(String value) { independenceStatus = value; }
+    public Integer getEvidenceFamilyCount() { return evidenceFamilyCount; }
+    public void setEvidenceFamilyCount(Integer value) { evidenceFamilyCount = value; }
+    public String getIndependenceNotes() { return independenceNotes; }
+    public void setIndependenceNotes(String value) { independenceNotes = value; }
     @Column(name = "source_url", columnDefinition = "TEXT")
     private String sourceUrl;
     @Column(name = "submitted_quote", columnDefinition = "TEXT")

@@ -131,6 +131,12 @@ Select `LLM_PROVIDER=gemini` or `LLM_PROVIDER=openai` and configure that provide
 
 For an intentional demo, select `LLM_PROVIDER=mock` (the `local` profile also selects this provider). Demo reports display **DEMO MODE — SYNTHETIC OUTPUT**, generate no factual claims or quotations, and record zero model tokens and model cost. Real API keys are ignored in mock mode. Search and page fetching are separate services and may still access the web in a demo run.
 
+### Search outcomes
+
+Tavily is the primary search provider. When it has no results or is unavailable, the app can try DuckDuckGo HTML; set `SEARCH_ALLOW_SECONDARY_FALLBACK=false` to disable that second attempt. Search traces show each provider's `SUCCESS`, `EMPTY`, or `UNAVAILABLE` outcome and a short diagnostic. The HTML provider accepts only links present in its response and does not invent a Wikipedia result or a relevance score.
+
+If both providers find no results, the run has no candidate sources. If search is unavailable and no source was discovered, the run fails with an explicit search error. When another provider finds sources after an outage, the resulting report is marked **Partial search coverage**. These statuses describe search availability; they do not establish that a discovered page was successfully fetched or that it supports a claim.
+
 ### Quotation evidence
 
 ReaderAgent accepts a claim only when its quotation matches the fetched, extracted page text. `literal-whitespace-v1` first tries a literal match, then permits only whitespace folding (including nonbreaking spaces). It trims outer whitespace and preserves case, punctuation, numbers, units, and negation. Word fragments and partial decimal values are rejected. This establishes text provenance; semantic support, source independence, and report citation accuracy remain separate checks.
@@ -138,6 +144,24 @@ ReaderAgent accepts a claim only when its quotation matches the fetched, extract
 Accepted claims retain the unmodified source passage, submitted model quotation, requested source URL, snapshot UUID, SHA-256 hash of UTF-8 extracted text, match status, normalization version, and half-open UTF-16 character offsets. Source text/identity fields cannot be overwritten by normal ORM updates. Full quotations are saved without truncation. The Claims tab can highlight the passage in the saved snapshot even after the live page changes. These snapshots contain extracted text rather than archived HTML. Rejected extractions are excluded from claims and recorded as counts/reasons with bounded examples in the reader trace.
 
 Restart the backend after updating: the existing Hibernate schema-update configuration adds nullable evidence columns. Older claims remain readable with validation unavailable; run research again to create checked evidence. No historical validation is inferred. Regression tests use simulated model outputs and H2; production PostgreSQL migration and browser appearance require separate acceptance checks.
+
+### Source independence and candidate corroboration
+
+`source-families-v1` groups fetched snapshots by registrable domain, configured publisher group, normalized identical text, or substantial text overlap. It uses Guava's bundled Public Suffix List data, including private suffixes, rather than splitting hostnames at the last two labels. See [Guava's domain-boundary documentation](https://guava.dev/releases/snapshot/api/docs/com/google/common/net/InternetDomainName.html) and the [Public Suffix List explanation](https://publicsuffix.org/learn/). The pinned Guava dependency must be updated to refresh that bundled list; unknown suffixes remain explicitly unknown.
+
+The policy records the final fetched URL/hostname, registrable domain, optional publisher group, source family ID, and policy version. Near-copy detection uses normalized five-word shingles: at least 20 distinct shingles and at least 85% overlap relative to the smaller set. This is a conservative heuristic that can miss rewritten syndication or group independently written texts. Long repeated quotations (at least 20 words) also collapse candidate support groups. Family membership can be transitive; model-proposed claim support links remain direct and are never merged transitively.
+
+Optionally set `EVIDENCE_PUBLISHER_GROUPS_JSON` to an operator-maintained JSON map, e.g. `{"example.org":"publisher-a","example.net":"publisher-a"}`. Keys must be canonical registrable domains and values nonempty group IDs up to 128 characters. Entries group related publishers; different IDs do **not** certify independence. The default is an empty map. Ownership data is never inferred from a model response.
+
+Verifier links must reference real, quote-grounded claims from validated snapshots. Malformed fields, out-of-range/self links, missing provenance, and conflicting support links are rejected or excluded. Candidate hosts and evidence-group counts remain inspectable in the Claims tab; proposed contradictions are retained. Multiple candidate groups remain `UNVERIFIED` with `INDEPENDENCE_UNCONFIRMED`: distinct sites/text alone cannot establish separate editorial ownership or separate underlying research. Automatic promotion to `VERIFIED` is disabled until a separate trustworthy support/independence assessment exists. Unverified findings remain available to the writer with those limits.
+
+Restart the backend to add the nullable provenance/independence columns through the existing schema-update configuration. Historical rows have no inferred independence assessment. Backend compilation and frontend production build are checked separately from regression, browser, provider, and deployment acceptance.
+
+### Report citations and claim support
+
+The writer and revision writer return structured selections of existing claim IDs. The application revalidates each claim against its run, source number, saved snapshot UUID and hash, URL, quote span, and matcher version. It then renders the source quotation and bibliography itself; the model cannot invent the report's prose, source number, title, or link. The report stores its selection and evidence manifest.
+
+Candidate claim statements appear only as **unassessed interpretations**, explicitly separated from the cited quotation. A quotation match proves where the text occurred, not that it entails the statement, that the source is reliable, or that the finding is scientifically true. Proposed contradictions are labelled as proposals. The legacy citation sanitizer remains only a structural helper and its trace explicitly says it did not assess support. Report text therefore exposes evidence origins without claiming semantic validation.
 
 ## Local sign-in and private runs
 

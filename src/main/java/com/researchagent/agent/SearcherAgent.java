@@ -7,6 +7,7 @@ import com.researchagent.model.Source;
 import com.researchagent.model.StepTrace;
 import com.researchagent.tools.SearchResult;
 import com.researchagent.tools.SearchService;
+import com.researchagent.tools.SearchOutcome;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -30,14 +31,17 @@ public class SearcherAgent {
     public static class SearcherResult {
         private final List<Source> sources;
         private final StepTrace stepTrace;
+        private final SearchOutcome.Status status;
 
-        public SearcherResult(List<Source> sources, StepTrace stepTrace) {
+        public SearcherResult(List<Source> sources, StepTrace stepTrace, SearchOutcome.Status status) {
             this.sources = sources;
             this.stepTrace = stepTrace;
+            this.status = status;
         }
 
         public List<Source> getSources() { return sources; }
         public StepTrace getStepTrace() { return stepTrace; }
+        public SearchOutcome.Status getStatus() { return status; }
     }
 
     public SearcherResult search(String runId, int seq, ResearchPlan plan, ResearchDepth depth) {
@@ -46,6 +50,9 @@ public class SearcherAgent {
 
         List<Source> collectedSources = new ArrayList<>();
         Set<String> seenUrls = new HashSet<>();
+        List<String> providerOutcomes = new ArrayList<>();
+        boolean unavailable = false;
+        boolean anyResults = false;
         List<String> queries = plan.getSearchQueries();
 
         int maxPerQuery = Math.max(2, (int) Math.ceil((double) maxPages / Math.max(1, queries.size())));
@@ -56,8 +63,15 @@ public class SearcherAgent {
             }
 
             com.researchagent.execution.RunControl.checkActive();
-            List<SearchResult> results = searchService.search(query, maxPerQuery);
-            for (SearchResult res : results) {
+            SearchOutcome outcome = searchService.searchOutcome(query, maxPerQuery);
+            if (!outcome.results().isEmpty()) anyResults = true;
+            if (outcome.status() == SearchOutcome.Status.UNAVAILABLE || outcome.status() == SearchOutcome.Status.PARTIAL)
+                unavailable = true;
+            for (SearchOutcome.ProviderAttempt attempt : outcome.attempts()) {
+                providerOutcomes.add(attempt.provider() + ": " + attempt.status() + " (" + attempt.resultCount()
+                        + (attempt.diagnostic().isBlank() ? "" : ", " + attempt.diagnostic()) + ")");
+            }
+            for (SearchResult res : outcome.results()) {
                 if (collectedSources.size() >= maxPages) {
                     break;
                 }
@@ -83,21 +97,23 @@ public class SearcherAgent {
         }
 
         long durationMs = System.currentTimeMillis() - startTime;
+        SearchOutcome.Status status = anyResults ? unavailable ? SearchOutcome.Status.PARTIAL : SearchOutcome.Status.SUCCESS
+                : unavailable ? SearchOutcome.Status.UNAVAILABLE : SearchOutcome.Status.EMPTY;
         StepTrace trace = StepTrace.builder()
                 .id(UUID.randomUUID().toString())
                 .runId(runId)
                 .seq(seq)
                 .agent(AgentType.SEARCHER)
-                .action("Gathered and deduplicated " + collectedSources.size() + " web sources across " + queries.size() + " queries")
+                .action("Search " + status + ": gathered " + collectedSources.size() + " candidate URLs across " + queries.size() + " queries")
                 .prompt("Queries: " + String.join(" | ", queries))
-                .response("Identified " + collectedSources.size() + " candidate URLs (max cap: " + maxPages + ")")
+                .response("Outcome: " + status + "; provider attempts: " + String.join(" | ", providerOutcomes))
                 .tokensIn(0)
                 .tokensOut(0)
                 .costPaise(0)
                 .durationMs(durationMs)
                 .build();
 
-        return new SearcherResult(collectedSources, trace);
+        return new SearcherResult(collectedSources, trace, status);
     }
 
     private String normalizeUrl(String url) {

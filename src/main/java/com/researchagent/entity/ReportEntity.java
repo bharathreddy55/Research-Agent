@@ -14,6 +14,18 @@ import java.time.Instant;
         @Index(name = "idx_reports_version", columnList = "run_id, version")
 })
 public class ReportEntity {
+    @Column(name = "evidence_policy", length = 32)
+    private String evidencePolicy;
+    @Column(name = "evidence_manifest_json", columnDefinition = "TEXT")
+    private String evidenceManifestJson;
+    @Column(name = "report_draft_json", columnDefinition = "TEXT")
+    private String reportDraftJson;
+    public String getEvidencePolicy() { return evidencePolicy; }
+    public void setEvidencePolicy(String value) { evidencePolicy = value; }
+    public String getEvidenceManifestJson() { return evidenceManifestJson; }
+    public void setEvidenceManifestJson(String value) { evidenceManifestJson = value; }
+    public String getReportDraftJson() { return reportDraftJson; }
+    public void setReportDraftJson(String value) { reportDraftJson = value; }
 
     @Id
     @Column(name = "id", length = 64, nullable = false)
